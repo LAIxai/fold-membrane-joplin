@@ -1,0 +1,4 @@
+/* Fold Membrane styles */
+.mup-hd { user-select: none; }
+.mup-hd:hover { opacity: 0.8; }
+.mup-ico { font-size: 0.8em; vertical-align: middle; }
