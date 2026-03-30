@@ -1,7 +1,7 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 2.7
+ * @version 2.8
  * @date    2026.03.30(月)
  * @desc    v2.0: H1=/H2=/H3= prefix型サポート、CN=H1旧形式廃止、pfx/cn分離
  *          v2.2: H1=型を<h1>→<span class="mup-pfx-*">に変更（TinyMCEの#変換を防止）; 閉じ膜フッターのpfx埋込み方式をclassに統一
@@ -10,15 +10,16 @@
  *          v2.5: data-mup-dollar廃止→class="mup-dollar"で$\🔖[label]$のドル情報を保持（TinyMCEはdata-*を消すがclassは保持する）
  *          v2.6: A記法に全面切替（\▼→A▼, \🔖→A🔖等）。バックスラッシュ増殖問題の根本解決。
  *          v2.7: A記法→M記法（Membrane/膜の頭文字）
+ *          v2.8: 正式記法を$M▼[CN=...]$に統一（$はオプション、両形式を受理）
  * @author  俊克 + Claude (Anthropic)
  * @desc    markMup膜記法をJoplinのMarkdown-itでHTMLレンダリングする
  */
 'use strict';
 
 // \▼[CN=RENDERER.CONST] // 定数
-var RE_O  = /^[ \t]*M(▼|▶)\[(CN|H[1-3])=([^\]]+)\]/;  // M▼ / M▶ 形式 / CN= と H1=/H2=/H3= 対応
-var RE_C  = /^[ \t]*M(▲|◀)\[(CN|H[1-3])=([^\]]+)\]/;  // M▲ / M◀ 形式 / CN= と H1=/H2=/H3= 対応
-var RE_BM        = /^[ \t]*M🔖\[([^\]]*)\]/;            // M🔖[ラベル] しおり＆エディタ切替ボタン
+var RE_O  = /^[ \t]*\$?M(▼|▶)\[(CN|H[1-3])=([^\]]+)\]/;  // $M▼ / M▼（$オプション） / CN= と H1=/H2=/H3= 対応
+var RE_C  = /^[ \t]*\$?M(▲|◀)\[(CN|H[1-3])=([^\]]+)\]/;  // $M▲ / M▲（$オプション） / CN= と H1=/H2=/H3= 対応
+var RE_BM        = /^[ \t]*\$?M🔖\[([^\]]*)\]/;            // $M🔖[ラベル] / M🔖[ラベル]（$オプション）
 var RE_BM_DIV    = /<(?:div|span)[^>]*data-mup="bookmark"[^>]*data-mup-label="([^"]*)"[^>]*>/; // HTML div/span形式
 var DEPTH_COLORS = ['#9b6fc4','#5588cc','#4aaa6a','#c8a040','#cc7744','#44aacc'];
 var SN_CMDS = ['fnm','sur','spfx','sfx','pfx','orgdiv','orgname','orgaddress',
@@ -294,7 +295,7 @@ module.exports = {
         // \▼[CN=RENDERER.JOPLIN.MARKMUP] // 膜記法レンダラー（膜ありノート用）
         markdownIt.core.ruler.push('markMup',function(state){
           var src=state.src;
-          if(!/M[▼▶▲◀]\[(CN|H[1-3])=|M🔖\[/.test(src)) return false;
+          if(!/\$?M[▼▶▲◀]\[(CN|H[1-3])=|\$?M🔖\[/.test(src)) return false;
           var mode=/^%\s*nature/im.test(src)?'nature':'std';
           state.tokens=[];
           var token=new state.Token('html_block','',0);
