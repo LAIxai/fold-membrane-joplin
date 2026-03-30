@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.04
+ * @version 8.05
  * @date    2026.03.30(月)
  * @author  俊克 + Claude (Anthropic)
  * @desc
@@ -151,6 +151,7 @@
  *   v8.02 2026.03.30(月) pm00:20 CN=4471: <div>→<span>に変更（<p>内不正HTML→スタイル消失の修正）; CN=7832: span/div両対応
  *   v8.03 2026.03.30(月) pm01:10 CN=4471: WYSIWYGも\🔖[label]プレーンテキストをmceInsertContentで挿入（HTMLサニタイザー完全回避）
  *   v8.04 2026.03.30(月) pm02:10 CN=7832: data-mup-dollar="1"で$\🔖[label]$を復元; markdownItRenderer.js v2.4: RE_BM_DOLLAR追加・$形式検出→data-mup-dollar付与
+ *   v8.05 2026.03.30(月) pm06:50 CN=1920: $...$スロット復元時に②③適用（\\🔖増殖の根本修正）; CN=6483: Repair Backslash ∞🔧メニュー追加（\\{2,}→\核オプション）
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -513,8 +514,16 @@ function repairMupSpan(body: string): string {
   //    保護: \▼ \▶ \▲ \◀ \🔖 (膜記法・しおり) + コードブロック（上記プレースホルダ）
   //    削除: それ以外の全バックスラッシュ（TinyMCE増殖・エスケープ残骸）
   fixed = fixed.replace(/\\(?![▼▶▲◀🔖])/g, '');
-  // コードブロックを復元
-  fixed = fixed.replace(/\x00BS(\d+)\x00/g, (_: string, i: string) => _bsSlots[Number(i)]);
+  // コードブロックを復元（$...$スロット内の重複バックスラッシュも②③適用）
+  fixed = fixed.replace(/\x00BS(\d+)\x00/g, (_: string, i: string) => {
+    let s = _bsSlots[Number(i)];
+    // $...$スロット内: ②③ルールを適用（WYSIWYG往復による\\🔖増殖を阻止）
+    if (s.startsWith('$')) {
+      s = s.replace(/\\{2,}(▼|▶|▲|◀)\[(CN|H[1-3])=/g, '\\$1[$2=');
+      s = s.replace(/\\{2,}🔖\[/g, '\\🔖[');
+    }
+    return s;
+  });
   // \▲[CN=1920_repairMupSpan.BACKSLASH]
 
   // \▼[CN=6537_repairMupSpan.NBSP] // &nbsp;無限増殖修復
@@ -1106,6 +1115,34 @@ joplin.plugins.register({
         // \▲[CN=5274_mupInsertHR.EXEC]
       },
     });
+    await joplin.commands.register({
+      name: 'mupRepairBackslash',
+      label: 'Repair Backslash ∞ 🔧',
+      iconName: 'fas fa-broom',
+      execute: async () => {
+        // \▼[CN=6483_mupRepairBackslash.EXEC] // バックスラッシュ∞地獄の核オプション修復
+        // 正規表現 \\{2,} → \ （2個以上の連続バックスラッシュを1個に削減）
+        // コードブロック・インラインコードは保護してから適用
+        const note = await joplin.workspace.selectedNote();
+        if (!note) return;
+        let body = note.body;
+        // コードブロックとインラインコードを一時保護
+        const _bsInfSlots: string[] = [];
+        body = body.replace(/```[\s\S]*?```|`[^`\n]+`/g, (m: string) => {
+          _bsInfSlots.push(m);
+          return '\x00INF' + (_bsInfSlots.length - 1) + '\x00';
+        });
+        // \\{2,} → \ （2個以上のバックスラッシュを1個に削減）
+        body = body.replace(/\\{2,}/g, '\\');
+        // 保護したブロックを復元
+        body = body.replace(/\x00INF(\d+)\x00/g, (_: string, i: string) => _bsInfSlots[Number(i)]);
+        // repairMupSpanで膜記法を正規化
+        body = repairMupSpan(body);
+        await joplin.data.put(['notes', note.id], null, { body });
+        try { await joplin.commands.execute('editor.setText', body); } catch (_e) {}
+        // \▲[CN=6483_mupRepairBackslash.EXEC]
+      },
+    });
     // \▲[CN=8530_commands]
 
     // \▼[CN=2384_menu] // ツールメニュー登録
@@ -1116,6 +1153,7 @@ joplin.plugins.register({
       { commandName: 'mupInsertBookmark' },
       { commandName: 'mupRepairSpan' },
       { commandName: 'mupRepairEntities' },
+      { commandName: 'mupRepairBackslash' },
       { commandName: 'mupInsertLatexInline' },
       { commandName: 'mupInsertLatexBlock' },
       { commandName: 'mupInsertHR' },
