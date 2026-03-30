@@ -1,22 +1,23 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 2.4
+ * @version 2.6
  * @date    2026.03.30(月)
  * @desc    v2.0: H1=/H2=/H3= prefix型サポート、CN=H1旧形式廃止、pfx/cn分離
  *          v2.2: H1=型を<h1>→<span class="mup-pfx-*">に変更（TinyMCEの#変換を防止）; 閉じ膜フッターのpfx埋込み方式をclassに統一
  *          v2.3: $\▼[CN=...]$ / $\🔖[...]$ 形式（LaTeX保護記法）対応。`$形式と両立。
  *          v2.4: RE_BM_DOLLARを追加。$\🔖[...]$形式のとき data-mup-dollar="1" をボタンDIVに付与→repairMupSpanが$を復元可能に。
+ *          v2.5: data-mup-dollar廃止→class="mup-dollar"で$\🔖[label]$のドル情報を保持（TinyMCEはdata-*を消すがclassは保持する）
+ *          v2.6: A記法に全面切替（\▼→A▼, \🔖→A🔖等）。バックスラッシュ増殖問題の根本解決。
  * @author  俊克 + Claude (Anthropic)
  * @desc    markMup膜記法をJoplinのMarkdown-itでHTMLレンダリングする
  */
 'use strict';
 
 // \▼[CN=RENDERER.CONST] // 定数
-var RE_O  = /^[ \t]*(?:`?\$)?\\(▼|▶)\[(CN|H[1-3])=([^\]]+)\]/;  // \▼ / `$\▼ / $\▼ 三形式対応 / CN= と H1=/H2=/H3= 対応
-var RE_C  = /^[ \t]*(?:`?\$)?\\(▲|◀)\[(CN|H[1-3])=([^\]]+)\]/;  // \▲ / `$\▲ / $\▲ 三形式対応 / CN= と H1=/H2=/H3= 対応
-var RE_BM        = /^[ \t]*\$?\\🔖\[([^\]]*)\]\$?/;     // \🔖[ラベル] / $\🔖[ラベル]$ しおり＆エディタ切替ボタン
-var RE_BM_DOLLAR = /^[ \t]*\$\\🔖\[/;                   // $\🔖[...$ 形式（ドル保護記法）検出
+var RE_O  = /^[ \t]*A(▼|▶)\[(CN|H[1-3])=([^\]]+)\]/;  // A▼ / A▶ 形式 / CN= と H1=/H2=/H3= 対応
+var RE_C  = /^[ \t]*A(▲|◀)\[(CN|H[1-3])=([^\]]+)\]/;  // A▲ / A◀ 形式 / CN= と H1=/H2=/H3= 対応
+var RE_BM        = /^[ \t]*A🔖\[([^\]]*)\]/;            // A🔖[ラベル] しおり＆エディタ切替ボタン
 var RE_BM_DIV    = /<(?:div|span)[^>]*data-mup="bookmark"[^>]*data-mup-label="([^"]*)"[^>]*>/; // HTML div/span形式
 var DEPTH_COLORS = ['#9b6fc4','#5588cc','#4aaa6a','#c8a040','#cc7744','#44aacc'];
 var SN_CMDS = ['fnm','sur','spfx','sfx','pfx','orgdiv','orgname','orgaddress',
@@ -248,9 +249,7 @@ function renderMarkMup(src,mode){
     } else if(RE_BM.test(line)||RE_BM_DIV.test(line)){
       var bmmatch=RE_BM.test(line)?RE_BM.exec(line):RE_BM_DIV.exec(line);
       var bmlabel=escH((bmmatch[1]||'bookmark').trim());
-      var hasDollar=RE_BM_DOLLAR.test(line); // $\🔖[...]$形式かどうか
-      // data-mup-dollarはTinyMCEのsetContentで消える → classに格納（TinyMCEはclassを保持）
-      var bmClass='mup-bookmark'+(hasDollar?' mup-dollar':'');
+      var bmClass='mup-bookmark';
       var bmStyle='display:inline-flex;align-items:center;gap:6px;'
            +'padding:3px 12px;background:#fff8e1;border:1px solid #ffcc02;'
            +'border-radius:16px;cursor:pointer;font-size:0.85em;'
@@ -294,7 +293,7 @@ module.exports = {
         // \▼[CN=RENDERER.JOPLIN.MARKMUP] // 膜記法レンダラー（膜ありノート用）
         markdownIt.core.ruler.push('markMup',function(state){
           var src=state.src;
-          if(!/\\[▼▶▲◀]\[(CN|H[1-3])=|\\🔖\[/.test(src)) return false;
+          if(!/A[▼▶▲◀]\[(CN|H[1-3])=|A🔖\[/.test(src)) return false;
           var mode=/^%\s*nature/im.test(src)?'nature':'std';
           state.tokens=[];
           var token=new state.Token('html_block','',0);
