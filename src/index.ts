@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 7.98
+ * @version 7.99
  * @date    2026.03.30(月)
  * @author  俊克 + Claude (Anthropic)
  * @desc
@@ -145,6 +145,7 @@
  *   v7.96 2026.03.29(日) pm12:16 CN=3094: inner抽出と同時にバックスラッシュ除去を追加（CN=1920保護をすり抜ける```ブロック内バックスラッシュ問題の根本修正）; CN=3417②: data.put後にeditor.setTextで強制リフレッシュ追加
  *   v7.97 2026.03.30(月) am10:31 CN=4821: repairMupSpanにHTMLエンティティデコード追加; CN=6174: &lt;span/&lt;div検出追加; CN=5293: Repair HTML Entitiesメニュー追加（暫定）
  *   v7.98 2026.03.30(月) am11:00 栞デフォルトラベルを「ここだよ🔖!!」→「Here 🔖!!」に変更（英語化）
+ *   v7.99 2026.03.30(月) am11:20 新アーキテクチャ原則: WYSIWYGは書き込まない; CN=3417①②にMarkdownモードガード追加; CN=9031無効化
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -755,38 +756,8 @@ joplin.plugins.register({
         }
       }
 
-      // \▼[CN=9031_modeWatcher.NOTE_SWITCH.REPAIR] // WYSIWYG切替先ノートのspan修復
-      else if (noteChangedInWYSIWYG && note?.body && (
-        note.body.includes('class="mup-') || /^🔖 .+$/m.test(note.body)
-      )) {
-        // WYSIWYGでspan破壊があるノートに切り替えた → toggleEditors往復で修復
-        // onNoteSelectionChangeが間に合わなかった場合のフォールバック（約500ms後に発動）
-        _isAutoRepairing = true;
-        try {
-          await joplin.commands.execute('toggleEditors');
-          for (let i = 0; i < 20; i++) {
-            await new Promise(r => setTimeout(r, 100));
-            if (await isMarkdownMode()) break;
-          }
-          let note2 = await joplin.workspace.selectedNote();
-          for (let i = 0; i < 20; i++) {
-            await new Promise(r => setTimeout(r, 200));
-            note2 = await joplin.workspace.selectedNote();
-            if (note2 && (note2.body.includes('<span') || /^\\{3}$/m.test(note2.body))) break;
-          }
-          if (note2) {
-            let repaired = note2.body.replace(/^🔖 (.+)$/gm, '\\🔖[$1]');
-            repaired = repairMupSpan(repaired);
-            if (repaired !== note2.body) {
-              await joplin.data.put(['notes', note2.id], null, { body: repaired });
-            }
-          }
-          await joplin.commands.execute('toggleEditors');
-        } finally {
-          await new Promise(r => setTimeout(r, 500));
-          _isAutoRepairing = false;
-        }
-      }
+      // \▼[CN=9031_modeWatcher.NOTE_SWITCH.REPAIR] // [無効化 v7.99] WYSIWYG切替先ノートのspan修復
+      // 新アーキテクチャ原則: WYSIWYGは書き込まない → toggleEditors往復修復は不要
       // \▲[CN=9031_modeWatcher.NOTE_SWITCH.REPAIR]
 
       // \▼[CN=1647_modeWatcher.HR_RESTORE] // [無効化 v7.76] Markdown→WYSIWYG: <hr>テキストを実罫線に自動変換
@@ -834,6 +805,9 @@ joplin.plugins.register({
             // 膜あり → _hasDmg(CN=6174)で破損検出 → 即修復
             // 旧バージョン破損（分断リンク・file:///・HTMLテーブル）もここで対応
             if (_hasDmg(outNote.body)) {
+              // WYSIWYGモードでは書き込まない（新アーキテクチャ原則: WYSIWYG is read-only）
+              // 修復はMarkdownモード切替時（CN=7538）に委ねる
+              if (!(await isMarkdownMode())) break;
               let repaired = outNote.body.replace(/^🔖 (.+)$/gm, '\\🔖[$1]');
               repaired = repairMupSpan(repaired);
               if (repaired !== outNote.body) {
@@ -849,13 +823,13 @@ joplin.plugins.register({
         // _hasDmg(CN=6174)で検出: mup-span破壊 + 旧バージョンDB保存済み破損（分断リンク・file:///・HTMLテーブル）
         // 膜記法なし → 修復不要（安全のため必ず_hasMembrane確認）
         const _hasMembrane2 = incoming?.body && (/\\[▼▶▲◀]/.test(incoming.body) || /^🔖 /.test(incoming.body));
-        if (_hasMembrane2 && _hasDmg(incoming!.body)) {
+        // WYSIWYGモードでは書き込まない（新アーキテクチャ原則: WYSIWYG is read-only）
+        if (_hasMembrane2 && _hasDmg(incoming!.body) && (await isMarkdownMode())) {
           try {
             let repaired = incoming.body.replace(/^🔖 (.+)$/gm, '\\🔖[$1]');
             repaired = repairMupSpan(repaired);
             if (repaired !== incoming.body) {
               await joplin.data.put(['notes', incoming.id], null, { body: repaired });
-              // エディタを強制リフレッシュ（data.put後に自動更新されない場合の対策）
               const _stillSelected = await joplin.workspace.selectedNote();
               if (_stillSelected?.id === incoming.id) {
                 await joplin.commands.execute('editor.setText', repaired);
