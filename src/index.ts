@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 7.97
+ * @version 7.98
  * @date    2026.03.30(月)
  * @author  俊克 + Claude (Anthropic)
  * @desc
@@ -144,6 +144,7 @@
  *   v7.95 2026.03.29(日) am11:25 CN=6174_hasDmg: \\▼限定→\\{2}（任意二重バックスラッシュ）に拡張（膜外テキストへの増殖を検出できなかった欠陥修正）
  *   v7.96 2026.03.29(日) pm12:16 CN=3094: inner抽出と同時にバックスラッシュ除去を追加（CN=1920保護をすり抜ける```ブロック内バックスラッシュ問題の根本修正）; CN=3417②: data.put後にeditor.setTextで強制リフレッシュ追加
  *   v7.97 2026.03.30(月) am10:31 CN=4821: repairMupSpanにHTMLエンティティデコード追加; CN=6174: &lt;span/&lt;div検出追加; CN=5293: Repair HTML Entitiesメニュー追加（暫定）
+ *   v7.98 2026.03.30(月) am11:00 栞デフォルトラベルを「ここだよ🔖!!」→「Here 🔖!!」に変更（英語化）
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -1034,7 +1035,7 @@ joplin.plugins.register({
       execute: async () => {
         // \▼[CN=4471_mupInsertBookmark.EXEC] // 🔖しおり＆エディタ切替ボタン挿入
         // {8530_commands} ⇒ Me ⇒ {5139_onMessage.TOGGLE_EDITOR}
-        await insertTemplate('\n\\🔖[ここだよ🔖!!]\n');
+        await insertTemplate('\n\\🔖[Here 🔖!!]\n');
         // \▲[CN=4471_mupInsertBookmark.EXEC]
       },
     });
