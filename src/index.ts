@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 7.96
- * @date    2026.03.29(日)
+ * @version 7.97
+ * @date    2026.03.30(月)
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -143,6 +143,7 @@
  *   v7.94 2026.03.28 pm11:20 無限ループ対策: ①CN=6174_hasDmg: ```+膜の誤検知修正(```直後が膜行のみ検出); ②CN=3417: ポーリング15→5回; ③CN=3417: _isAutoRepairing ガード追加
  *   v7.95 2026.03.29(日) am11:25 CN=6174_hasDmg: \\▼限定→\\{2}（任意二重バックスラッシュ）に拡張（膜外テキストへの増殖を検出できなかった欠陥修正）
  *   v7.96 2026.03.29(日) pm12:16 CN=3094: inner抽出と同時にバックスラッシュ除去を追加（CN=1920保護をすり抜ける```ブロック内バックスラッシュ問題の根本修正）; CN=3417②: data.put後にeditor.setTextで強制リフレッシュ追加
+ *   v7.97 2026.03.30(月) am10:31 CN=4821: repairMupSpanにHTMLエンティティデコード追加; CN=6174: &lt;span/&lt;div検出追加; CN=5293: Repair HTML Entitiesメニュー追加（暫定）
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -195,6 +196,15 @@ import { ContentScriptType, MenuItemLocation } from 'api/types';
 // {5139_onMessage.TOGGLE_EDITOR, 9015_mupRepairSpan.EXEC, 7538_modeWatcher.AUTOREPAIR, 3417_noteSelectWatcher} ⇒ Me
 function repairMupSpan(body: string): string {
   let fixed = body;
+
+  // \▼[CN=4821_repairMupSpan.ENTITY_DECODE] // HTMLエンティティデコード（TinyMCE二重エスケープ修復）
+  // TinyMCEが<div class="mup">を&lt;div class=&quot;mup&quot;&gt;にエンコードするケースを修復。
+  // div/spanタグに限定してデコード（コードブロック内の正当な&lt;等を保護）。
+  fixed = fixed.replace(
+    /&lt;(\/?(?:div|span)[^&\n]*?)&gt;/g,
+    (_: string, inner: string) => '<' + inner.replace(/&quot;/g, '"').replace(/&amp;/g, '&') + '>'
+  );
+  // \▲[CN=4821_repairMupSpan.ENTITY_DECODE]
 
   // \▼[CN=5849_repairMupSpan.DOLLARBLOCK] // $$膜ラッパー除去: TinyMCE保護用の$$を解放
   // TinyMCEは$$...$$ブロックを数式ウィジェットとして扱い、内容を一切変換しない。
@@ -658,6 +668,8 @@ joplin.plugins.register({
     // {7538_modeWatcher.AUTOREPAIR, 3417_noteSelectWatcher} ⇒ Me
     // WYSIWYG由来のHTML破損 + 旧バージョンDB保存済み破損の両方を検出する
     const _hasDmg = (b: string): boolean =>
+      b.includes('&lt;span') ||                          // エンティティ化span（TinyMCE二重エスケープ）
+      b.includes('&lt;div') ||                           // エンティティ化div（TinyMCE二重エスケープ）
       b.includes('<span') ||                              // mup-span残存（WYSIWYG直後）
       /^\\`+[ \t]*$/m.test(b) ||                         // \` バリア残骸（TinyMCEが<p>```</p>→\`にシリアライズ）
       /^```[^\n]*\n[ \t]*\\[▼▶▲◀]\[/.test(b) ||         // ```直後が膜行（WYSIWYGペースト由来バリア）※正当なコードブロック+膜の共存は除外
@@ -986,6 +998,35 @@ joplin.plugins.register({
         // \▲[CN=9015_mupRepairSpan.EXEC]
       },
     });
+
+    await joplin.commands.register({
+      name: 'mupRepairEntities',
+      label: 'Repair HTML Entities 🔧',
+      iconName: 'fas fa-code',
+      execute: async () => {
+        // \▼[CN=5293_mupRepairEntities.EXEC] // HTMLエンティティ修復（暫定メニュー）
+        // TinyMCEが&lt;div&gt;形式にエスケープしたmup関連HTMLをMarkdownモードで修復する。
+        // ver0.1新アーキテクチャ（WYSIWYG書き込みなし）完成後に不要になったらメニューから削除。
+        // {2384_menu} ⇒ Me ⇒ {9043_repairMupSpan}
+        if (!(await isMarkdownMode())) {
+          await joplin.commands.execute('toggleEditors');
+          for (let i = 0; i < 20; i++) {
+            await new Promise(r => setTimeout(r, 100));
+            if (await isMarkdownMode()) break;
+          }
+        }
+        const note = await joplin.workspace.selectedNote();
+        if (!note) return;
+        let repaired = note.body.replace(/^🔖 (.+)$/gm, '\\🔖[$1]');
+        repaired = repairMupSpan(repaired); // CN=4821エンティティデコードも内包
+        if (repaired !== note.body) {
+          await joplin.data.put(['notes', note.id], null, { body: repaired });
+          try { await joplin.commands.execute('editor.setText', repaired); } catch (_e) {}
+        }
+        // \▲[CN=5293_mupRepairEntities.EXEC]
+      },
+    });
+
     await joplin.commands.register({
       name: 'mupInsertBookmark',
       label: 'Insert Bookmark 🔖',
@@ -1042,6 +1083,7 @@ joplin.plugins.register({
       { commandName: 'mupInsertH' },
       { commandName: 'mupInsertBookmark' },
       { commandName: 'mupRepairSpan' },
+      { commandName: 'mupRepairEntities' },
       { commandName: 'mupInsertLatexInline' },
       { commandName: 'mupInsertLatexBlock' },
       { commandName: 'mupInsertHR' },
