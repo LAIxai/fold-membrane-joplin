@@ -248,14 +248,15 @@ function renderMarkMup(src,mode){
     } else if(RE_BM.test(line)||RE_BM_DIV.test(line)){
       var bmmatch=RE_BM.test(line)?RE_BM.exec(line):RE_BM_DIV.exec(line);
       var bmlabel=escH((bmmatch[1]||'bookmark').trim());
-      var hasDollar=RE_BM_DOLLAR.test(line)?'1':'0'; // $\🔖[...]$形式かどうか
+      var hasDollar=RE_BM_DOLLAR.test(line); // $\🔖[...]$形式かどうか
+      // data-mup-dollarはTinyMCEのsetContentで消える → classに格納（TinyMCEはclassを保持）
+      var bmClass='mup-bookmark'+(hasDollar?' mup-dollar':'');
       var bmStyle='display:inline-flex;align-items:center;gap:6px;'
            +'padding:3px 12px;background:#fff8e1;border:1px solid #ffcc02;'
            +'border-radius:16px;cursor:pointer;font-size:0.85em;'
            +'user-select:none;margin:4px 0;color:#5c4a00';
-      html+='<div class="mup-bookmark"'
+      html+='<div class="'+bmClass+'"'
            +' data-mup="bookmark" data-mup-label="'+bmlabel+'"'
-           +' data-mup-dollar="'+hasDollar+'"'
            +' style="'+bmStyle+'">'
            +'🔖 '+bmlabel+'</div>';
     // \▲[CN=RENDERER.HTML.LOOP.BOOKMARK]
