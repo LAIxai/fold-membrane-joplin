@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 7.99
+ * @version 8.00
  * @date    2026.03.30(月)
  * @author  俊克 + Claude (Anthropic)
  * @desc
@@ -146,6 +146,7 @@
  *   v7.97 2026.03.30(月) am10:31 CN=4821: repairMupSpanにHTMLエンティティデコード追加; CN=6174: &lt;span/&lt;div検出追加; CN=5293: Repair HTML Entitiesメニュー追加（暫定）
  *   v7.98 2026.03.30(月) am11:00 栞デフォルトラベルを「ここだよ🔖!!」→「Here 🔖!!」に変更（英語化）
  *   v7.99 2026.03.30(月) am11:20 新アーキテクチャ原則: WYSIWYGは書き込まない; CN=3417①②にMarkdownモードガード追加; CN=9031無効化
+ *   v8.00 2026.03.30(月) am11:30 テストケース: 栞ボタンに膜フラグ付与; CN=4471: WYSIWYGはHTML div挿入→即時表示; CN=7832: BOOKMARK_DIV→\🔖変換追加; CN=6174: data-mup検出追加
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -207,6 +208,18 @@ function repairMupSpan(body: string): string {
     (_: string, inner: string) => '<' + inner.replace(/&quot;/g, '"').replace(/&amp;/g, '&') + '>'
   );
   // \▲[CN=4821_repairMupSpan.ENTITY_DECODE]
+
+  // \▼[CN=7832_repairMupSpan.BOOKMARK_DIV] // data-mup="bookmark" div → \🔖記法に変換（Markdownモード用）
+  // WYSIWYGで挿入されたHTML形式の栞をMarkdown記法に戻す
+  fixed = fixed.replace(
+    /<div[^>]*data-mup="bookmark"[^>]*data-mup-label="([^"]*)"[^>]*>[\s\S]*?<\/div>/g,
+    '\\🔖[$1]'
+  );
+  fixed = fixed.replace(
+    /<div[^>]*data-mup-label="([^"]*)"[^>]*data-mup="bookmark"[^>]*>[\s\S]*?<\/div>/g,
+    '\\🔖[$1]'
+  );
+  // \▲[CN=7832_repairMupSpan.BOOKMARK_DIV]
 
   // \▼[CN=5849_repairMupSpan.DOLLARBLOCK] // $$膜ラッパー除去: TinyMCE保護用の$$を解放
   // TinyMCEは$$...$$ブロックを数式ウィジェットとして扱い、内容を一切変換しない。
@@ -672,6 +685,7 @@ joplin.plugins.register({
     const _hasDmg = (b: string): boolean =>
       b.includes('&lt;span') ||                          // エンティティ化span（TinyMCE二重エスケープ）
       b.includes('&lt;div') ||                           // エンティティ化div（TinyMCE二重エスケープ）
+      b.includes('data-mup="bookmark"') ||               // 栞HTML形式（Markdownモードで\🔖記法に変換が必要）
       b.includes('<span') ||                              // mup-span残存（WYSIWYG直後）
       /^\\`+[ \t]*$/m.test(b) ||                         // \` バリア残骸（TinyMCEが<p>```</p>→\`にシリアライズ）
       /^```[^\n]*\n[ \t]*\\[▼▶▲◀]\[/.test(b) ||         // ```直後が膜行（WYSIWYGペースト由来バリア）※正当なコードブロック+膜の共存は除外
@@ -1009,7 +1023,34 @@ joplin.plugins.register({
       execute: async () => {
         // \▼[CN=4471_mupInsertBookmark.EXEC] // 🔖しおり＆エディタ切替ボタン挿入
         // {8530_commands} ⇒ Me ⇒ {5139_onMessage.TOGGLE_EDITOR}
-        await insertTemplate('\n\\🔖[Here 🔖!!]\n');
+        if (await isMarkdownMode()) {
+          // Markdownモード: \🔖記法をそのまま挿入（左ペインに表示・右ペインはボタン描画）
+          await insertTemplate('\n\\🔖[Here 🔖!!]\n');
+        } else {
+          // WYSIWYGモード: data-mup="bookmark"付きHTMLを直接挿入→TinyMCEが即時ボタン表示
+          // テストケース: 膜フラグによるWYSIWYG直接レンダリングの動作確認
+          const bmStyle = 'display:inline-flex;align-items:center;gap:6px;'
+            + 'padding:3px 12px;background:#fff8e1;border:1px solid #ffcc02;'
+            + 'border-radius:16px;cursor:pointer;font-size:0.85em;'
+            + 'user-select:none;margin:4px 0;color:#5c4a00';
+          const bmHtml = `<div data-mup="bookmark" data-mup-label="Here 🔖!!" class="mup-bookmark" style="${bmStyle}">🔖 Here 🔖!!</div>`;
+          try {
+            await (joplin.clipboard as any).write({ html: `<html><body><p>${bmHtml}</p></body></html>` });
+          } catch(e) {
+            await joplin.clipboard.writeText('\\🔖[Here 🔖!!]');
+          }
+          try {
+            const { exec } = require('child_process');
+            const { platform } = require('process');
+            if (platform === 'darwin') {
+              exec('osascript -e \'tell application "System Events" to keystroke "v" using command down\'');
+            } else if (platform === 'win32') {
+              exec('powershell -command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait(\'^v\')"');
+            } else {
+              exec('xdotool key ctrl+v');
+            }
+          } catch(e) {}
+        }
         // \▲[CN=4471_mupInsertBookmark.EXEC]
       },
     });

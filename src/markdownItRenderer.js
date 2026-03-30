@@ -14,7 +14,8 @@
 // \▼[CN=RENDERER.CONST] // 定数
 var RE_O  = /^[ \t]*(?:`?\$)?\\(▼|▶)\[(CN|H[1-3])=([^\]]+)\]/;  // \▼ / `$\▼ / $\▼ 三形式対応 / CN= と H1=/H2=/H3= 対応
 var RE_C  = /^[ \t]*(?:`?\$)?\\(▲|◀)\[(CN|H[1-3])=([^\]]+)\]/;  // \▲ / `$\▲ / $\▲ 三形式対応 / CN= と H1=/H2=/H3= 対応
-var RE_BM = /^[ \t]*\$?\\🔖\[([^\]]*)\]\$?/;  // \🔖[ラベル] / $\🔖[ラベル]$ しおり＆エディタ切替ボタン
+var RE_BM    = /^[ \t]*\$?\\🔖\[([^\]]*)\]\$?/;  // \🔖[ラベル] / $\🔖[ラベル]$ しおり＆エディタ切替ボタン
+var RE_BM_DIV = /<div[^>]*data-mup="bookmark"[^>]*data-mup-label="([^"]*)"[^>]*>/; // HTML div形式（新アーキテクチャ）
 var DEPTH_COLORS = ['#9b6fc4','#5588cc','#4aaa6a','#c8a040','#cc7744','#44aacc'];
 var SN_CMDS = ['fnm','sur','spfx','sfx','pfx','orgdiv','orgname','orgaddress',
                'street','postcode','state','city','country','corresp','equalcont','email'];
@@ -242,14 +243,16 @@ function renderMarkMup(src,mode){
     // \▲[CN=RENDERER.HTML.LOOP.CLOSE]
 
     // \▼[CN=RENDERER.HTML.LOOP.BOOKMARK] // 🔖しおり＆エディタ切替ボタン行
-    } else if(RE_BM.test(line)){
-      var bmm=RE_BM.exec(line);
-      var bmlabel=escH((bmm[1]||'bookmark').trim());
-      html+='<div class="mup-bookmark"'
-           +' style="display:inline-flex;align-items:center;gap:6px;'
+    } else if(RE_BM.test(line)||RE_BM_DIV.test(line)){
+      var bmmatch=RE_BM.test(line)?RE_BM.exec(line):RE_BM_DIV.exec(line);
+      var bmlabel=escH((bmmatch[1]||'bookmark').trim());
+      var bmStyle='display:inline-flex;align-items:center;gap:6px;'
            +'padding:3px 12px;background:#fff8e1;border:1px solid #ffcc02;'
            +'border-radius:16px;cursor:pointer;font-size:0.85em;'
-           +'user-select:none;margin:4px 0;color:#5c4a00">'
+           +'user-select:none;margin:4px 0;color:#5c4a00';
+      html+='<div class="mup-bookmark"'
+           +' data-mup="bookmark" data-mup-label="'+bmlabel+'"'
+           +' style="'+bmStyle+'">'
            +'🔖 '+bmlabel+'</div>';
     // \▲[CN=RENDERER.HTML.LOOP.BOOKMARK]
 
