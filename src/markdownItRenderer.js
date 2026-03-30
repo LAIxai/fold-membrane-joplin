@@ -15,7 +15,7 @@
 var RE_O  = /^[ \t]*(?:`?\$)?\\(▼|▶)\[(CN|H[1-3])=([^\]]+)\]/;  // \▼ / `$\▼ / $\▼ 三形式対応 / CN= と H1=/H2=/H3= 対応
 var RE_C  = /^[ \t]*(?:`?\$)?\\(▲|◀)\[(CN|H[1-3])=([^\]]+)\]/;  // \▲ / `$\▲ / $\▲ 三形式対応 / CN= と H1=/H2=/H3= 対応
 var RE_BM    = /^[ \t]*\$?\\🔖\[([^\]]*)\]\$?/;  // \🔖[ラベル] / $\🔖[ラベル]$ しおり＆エディタ切替ボタン
-var RE_BM_DIV = /<div[^>]*data-mup="bookmark"[^>]*data-mup-label="([^"]*)"[^>]*>/; // HTML div形式（新アーキテクチャ）
+var RE_BM_DIV = /<(?:div|span)[^>]*data-mup="bookmark"[^>]*data-mup-label="([^"]*)"[^>]*>/; // HTML div/span形式（新アーキテクチャ）
 var DEPTH_COLORS = ['#9b6fc4','#5588cc','#4aaa6a','#c8a040','#cc7744','#44aacc'];
 var SN_CMDS = ['fnm','sur','spfx','sfx','pfx','orgdiv','orgname','orgaddress',
                'street','postcode','state','city','country','corresp','equalcont','email'];

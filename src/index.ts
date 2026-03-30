@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.01
+ * @version 8.02
  * @date    2026.03.30(月)
  * @author  俊克 + Claude (Anthropic)
  * @desc
@@ -148,6 +148,7 @@
  *   v7.99 2026.03.30(月) am11:20 新アーキテクチャ原則: WYSIWYGは書き込まない; CN=3417①②にMarkdownモードガード追加; CN=9031無効化
  *   v8.00 2026.03.30(月) am11:30 テストケース: 栞ボタンに膜フラグ付与; CN=4471: WYSIWYGはHTML div挿入→即時表示; CN=7832: BOOKMARK_DIV→\🔖変換追加; CN=6174: data-mup検出追加
  *   v8.01 2026.03.30(月) am12:00 CN=3291: Markdown→WYSIWYG切替時にmceAddStyleSheetでdata-mup CSSをTinyMCEに注入（テスト）
+ *   v8.02 2026.03.30(月) pm00:20 CN=4471: <div>→<span>に変更（<p>内不正HTML→スタイル消失の修正）; CN=7832: span/div両対応
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -210,14 +211,14 @@ function repairMupSpan(body: string): string {
   );
   // \▲[CN=4821_repairMupSpan.ENTITY_DECODE]
 
-  // \▼[CN=7832_repairMupSpan.BOOKMARK_DIV] // data-mup="bookmark" div → \🔖記法に変換（Markdownモード用）
-  // WYSIWYGで挿入されたHTML形式の栞をMarkdown記法に戻す
+  // \▼[CN=7832_repairMupSpan.BOOKMARK_DIV] // data-mup="bookmark" div/span → \🔖記法に変換（Markdownモード用）
+  // WYSIWYGで挿入されたHTML形式の栞をMarkdown記法に戻す（div/span両対応）
   fixed = fixed.replace(
-    /<div[^>]*data-mup="bookmark"[^>]*data-mup-label="([^"]*)"[^>]*>[\s\S]*?<\/div>/g,
+    /<(?:div|span)[^>]*data-mup="bookmark"[^>]*data-mup-label="([^"]*)"[^>]*>[\s\S]*?<\/(?:div|span)>/g,
     '\\🔖[$1]'
   );
   fixed = fixed.replace(
-    /<div[^>]*data-mup-label="([^"]*)"[^>]*data-mup="bookmark"[^>]*>[\s\S]*?<\/div>/g,
+    /<(?:div|span)[^>]*data-mup-label="([^"]*)"[^>]*data-mup="bookmark"[^>]*>[\s\S]*?<\/(?:div|span)>/g,
     '\\🔖[$1]'
   );
   // \▲[CN=7832_repairMupSpan.BOOKMARK_DIV]
@@ -1049,11 +1050,12 @@ joplin.plugins.register({
         } else {
           // WYSIWYGモード: data-mup="bookmark"付きHTMLを直接挿入→TinyMCEが即時ボタン表示
           // テストケース: 膜フラグによるWYSIWYG直接レンダリングの動作確認
+          // <span>を使用（<div>は<p>内に入れると不正HTMLになりスタイルが失われる）
           const bmStyle = 'display:inline-flex;align-items:center;gap:6px;'
             + 'padding:3px 12px;background:#fff8e1;border:1px solid #ffcc02;'
             + 'border-radius:16px;cursor:pointer;font-size:0.85em;'
             + 'user-select:none;margin:4px 0;color:#5c4a00';
-          const bmHtml = `<div data-mup="bookmark" data-mup-label="Here 🔖!!" class="mup-bookmark" style="${bmStyle}">🔖 Here 🔖!!</div>`;
+          const bmHtml = `<span data-mup="bookmark" data-mup-label="Here 🔖!!" class="mup-bookmark" style="${bmStyle}">🔖 Here 🔖!!</span>`;
           try {
             await (joplin.clipboard as any).write({ html: `<html><body><p>${bmHtml}</p></body></html>` });
           } catch(e) {
