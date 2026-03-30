@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.00
+ * @version 8.01
  * @date    2026.03.30(月)
  * @author  俊克 + Claude (Anthropic)
  * @desc
@@ -147,6 +147,7 @@
  *   v7.98 2026.03.30(月) am11:00 栞デフォルトラベルを「ここだよ🔖!!」→「Here 🔖!!」に変更（英語化）
  *   v7.99 2026.03.30(月) am11:20 新アーキテクチャ原則: WYSIWYGは書き込まない; CN=3417①②にMarkdownモードガード追加; CN=9031無効化
  *   v8.00 2026.03.30(月) am11:30 テストケース: 栞ボタンに膜フラグ付与; CN=4471: WYSIWYGはHTML div挿入→即時表示; CN=7832: BOOKMARK_DIV→\🔖変換追加; CN=6174: data-mup検出追加
+ *   v8.01 2026.03.30(月) am12:00 CN=3291: Markdown→WYSIWYG切替時にmceAddStyleSheetでdata-mup CSSをTinyMCEに注入（テスト）
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -769,6 +770,25 @@ joplin.plugins.register({
           _isAutoRepairing = false;
         }
       }
+
+      // \▼[CN=3291_modeWatcher.WYSIWYG_CSS] // Markdown→WYSIWYG切替: TinyMCEにmupStyleを注入
+      // TinyMCEは独立したレンダリング環境でmupStyle.cssが届かない。
+      // mceAddStyleSheetコマンドでdata: URIのCSSを注入し、data-mup要素をスタイリングする。
+      if (switchedToWYSIWYG) {
+        const mupCss = encodeURIComponent(
+          '[data-mup="bookmark"]{display:inline-flex!important;align-items:center;gap:6px;'
+          + 'padding:3px 12px;background:#fff8e1;border:1px solid #ffcc02;'
+          + 'border-radius:16px;cursor:pointer;font-size:0.85em;'
+          + 'user-select:none;margin:4px 0;color:#5c4a00;}'
+        );
+        try {
+          await joplin.commands.execute('editor.execCommand', {
+            name: 'mceAddStyleSheet',
+            value: `data:text/css,${mupCss}`,
+          });
+        } catch(_e) { /* TinyMCEが未対応の場合は無視 */ }
+      }
+      // \▲[CN=3291_modeWatcher.WYSIWYG_CSS]
 
       // \▼[CN=9031_modeWatcher.NOTE_SWITCH.REPAIR] // [無効化 v7.99] WYSIWYG切替先ノートのspan修復
       // 新アーキテクチャ原則: WYSIWYGは書き込まない → toggleEditors往復修復は不要
