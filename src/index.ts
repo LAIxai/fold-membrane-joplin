@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.03
+ * @version 8.04
  * @date    2026.03.30(月)
  * @author  俊克 + Claude (Anthropic)
  * @desc
@@ -150,6 +150,7 @@
  *   v8.01 2026.03.30(月) am12:00 CN=3291: Markdown→WYSIWYG切替時にmceAddStyleSheetでdata-mup CSSをTinyMCEに注入（テスト）
  *   v8.02 2026.03.30(月) pm00:20 CN=4471: <div>→<span>に変更（<p>内不正HTML→スタイル消失の修正）; CN=7832: span/div両対応
  *   v8.03 2026.03.30(月) pm01:10 CN=4471: WYSIWYGも\🔖[label]プレーンテキストをmceInsertContentで挿入（HTMLサニタイザー完全回避）
+ *   v8.04 2026.03.30(月) pm02:10 CN=7832: data-mup-dollar="1"で$\🔖[label]$を復元; markdownItRenderer.js v2.4: RE_BM_DOLLAR追加・$形式検出→data-mup-dollar付与
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -214,13 +215,16 @@ function repairMupSpan(body: string): string {
 
   // \▼[CN=7832_repairMupSpan.BOOKMARK_DIV] // data-mup="bookmark" div/span → \🔖記法に変換（Markdownモード用）
   // WYSIWYGで挿入されたHTML形式の栞をMarkdown記法に戻す（div/span両対応）
+  // data-mup-dollar="1" があれば $\🔖[label]$ 形式で復元（ドル保護記法を維持）
+  const _bm2mup = (m: string, label: string) =>
+    /data-mup-dollar="1"/.test(m) ? '$\\🔖[' + label + ']$' : '\\🔖[' + label + ']';
   fixed = fixed.replace(
     /<(?:div|span)[^>]*data-mup="bookmark"[^>]*data-mup-label="([^"]*)"[^>]*>[\s\S]*?<\/(?:div|span)>/g,
-    '\\🔖[$1]'
+    _bm2mup
   );
   fixed = fixed.replace(
     /<(?:div|span)[^>]*data-mup-label="([^"]*)"[^>]*data-mup="bookmark"[^>]*>[\s\S]*?<\/(?:div|span)>/g,
-    '\\🔖[$1]'
+    _bm2mup
   );
   // \▲[CN=7832_repairMupSpan.BOOKMARK_DIV]
 
