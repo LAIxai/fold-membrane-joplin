@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.02
+ * @version 8.03
  * @date    2026.03.30(月)
  * @author  俊克 + Claude (Anthropic)
  * @desc
@@ -149,6 +149,7 @@
  *   v8.00 2026.03.30(月) am11:30 テストケース: 栞ボタンに膜フラグ付与; CN=4471: WYSIWYGはHTML div挿入→即時表示; CN=7832: BOOKMARK_DIV→\🔖変換追加; CN=6174: data-mup検出追加
  *   v8.01 2026.03.30(月) am12:00 CN=3291: Markdown→WYSIWYG切替時にmceAddStyleSheetでdata-mup CSSをTinyMCEに注入（テスト）
  *   v8.02 2026.03.30(月) pm00:20 CN=4471: <div>→<span>に変更（<p>内不正HTML→スタイル消失の修正）; CN=7832: span/div両対応
+ *   v8.03 2026.03.30(月) pm01:10 CN=4471: WYSIWYGも\🔖[label]プレーンテキストをmceInsertContentで挿入（HTMLサニタイザー完全回避）
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -1048,30 +1049,19 @@ joplin.plugins.register({
           // Markdownモード: \🔖記法をそのまま挿入（左ペインに表示・右ペインはボタン描画）
           await insertTemplate('\n\\🔖[Here 🔖!!]\n');
         } else {
-          // WYSIWYGモード: data-mup="bookmark"付きHTMLを直接挿入→TinyMCEが即時ボタン表示
-          // テストケース: 膜フラグによるWYSIWYG直接レンダリングの動作確認
-          // <span>を使用（<div>は<p>内に入れると不正HTMLになりスタイルが失われる）
-          const bmStyle = 'display:inline-flex;align-items:center;gap:6px;'
-            + 'padding:3px 12px;background:#fff8e1;border:1px solid #ffcc02;'
-            + 'border-radius:16px;cursor:pointer;font-size:0.85em;'
-            + 'user-select:none;margin:4px 0;color:#5c4a00';
-          const bmHtml = `<span data-mup="bookmark" data-mup-label="Here 🔖!!" class="mup-bookmark" style="${bmStyle}">🔖 Here 🔖!!</span>`;
+          // WYSIWYGモード: \🔖[label]プレーンテキストをmceInsertContentで直接挿入
+          // 「膜として渡す」= TinyMCEにとってただのテキスト → サニタイザー完全回避
+          // Markdownに変換後は\🔖[label]記法として保存 → レンダラーがボタン化
           try {
-            await (joplin.clipboard as any).write({ html: `<html><body><p>${bmHtml}</p></body></html>` });
+            await joplin.commands.execute('editor.execCommand', {
+              name: 'mceInsertContent',
+              value: '\\🔖[Here 🔖!!]',
+              ui: false,
+            });
           } catch(e) {
-            await joplin.clipboard.writeText('\\🔖[Here 🔖!!]');
+            // フォールバック
+            await insertTemplate('\n\\🔖[Here 🔖!!]\n');
           }
-          try {
-            const { exec } = require('child_process');
-            const { platform } = require('process');
-            if (platform === 'darwin') {
-              exec('osascript -e \'tell application "System Events" to keystroke "v" using command down\'');
-            } else if (platform === 'win32') {
-              exec('powershell -command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait(\'^v\')"');
-            } else {
-              exec('xdotool key ctrl+v');
-            }
-          } catch(e) {}
         }
         // \▲[CN=4471_mupInsertBookmark.EXEC]
       },
