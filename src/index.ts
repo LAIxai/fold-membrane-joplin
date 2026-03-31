@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.11
+ * @version 8.12
  * @date    2026.03.31(火)
  * @author  俊克 + Claude (Anthropic)
  * @desc
@@ -158,6 +158,7 @@
  *   v8.09 2026.03.31(火) 正式記法を$M▼[CN=...]$に統一: テンプレート・repair・_bm2mup全更新; markdownItRenderer.js v2.8: $オプション対応
  *   v8.10 2026.03.31(火) 記法を$▼_M[CN=...]$に変更（▼先頭・_MはLaTeXサブスクリプト）。旧$M▼形式も受理; KaTeX競合修正: katexバンドル+renderMath()で自前レンダリング; markdownItRenderer.js v2.9
  *   v8.11 2026.03.31(火) 正式記法を▼m[CN=...]に変更（$なし・#見出し感覚）; repairMupSpan出力も▼m形式に統一; markdownItRenderer.js v3.0
+ *   v8.12 2026.03.31(火) データ上は$▼m[...]$（KaTeX保護）を維持。$なしはREADME(GitHub)のみ。template/repair/$を全復元。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -224,7 +225,7 @@ function repairMupSpan(body: string): string {
   // WYSIWYGで挿入されたHTML形式の栞をMarkdown記法に戻す（div/span両対応）
   // data-mup-dollar="1" があれば $\🔖[label]$ 形式で復元（ドル保護記法を維持）
   // data-mup-dollarはTinyMCEが消す → class="mup-dollar"で判定（TinyMCEはclassを保持する）
-  const _bm2mup = (_m: string, label: string) => '🔖m[' + label + ']';
+  const _bm2mup = (_m: string, label: string) => '$🔖m[' + label + ']$';
   fixed = fixed.replace(
     /<(?:div|span)[^>]*data-mup="bookmark"[^>]*data-mup-label="([^"]*)"[^>]*>[\s\S]*?<\/(?:div|span)>/g,
     _bm2mup
@@ -379,7 +380,7 @@ function repairMupSpan(body: string): string {
           const _openArrow = line.match(/[▼▶]/)?.[0] || '▼';
           const _cm = line.match(/\*\s*(\/\/[^*\n]*?)\s*\*/);
           const _bm = line.match(/(\[(?:⊕|⊖|⊘)[^\]\n]*\])/);
-          return _openArrow + 'm[' + _key + ']'
+          return '$' + _openArrow + 'm[' + _key + ']$'
                + (_cm ? ' ' + _cm[1].trim() : '')
                + (_bm ? ' ' + _bm[1]        : '');
         }
@@ -400,7 +401,7 @@ function repairMupSpan(body: string): string {
       const { pfx, cn } = _extractPfxCn(cnParts);
       const c = comment ? ' // ' + comment.trim() : '';
       const b = badge   ? ' ' + badge.replace(/\\([\[\]])/g, '$1') : '';
-      return arrow + 'm[' + pfx + '=' + cn + ']' + c + b;
+      return '$' + arrow + 'm[' + pfx + '=' + cn + ']$' + c + b;
     }
   );
   // 閉じ膜(▲直書き): ▲ <span class="mup-pfx-*">cn</span>+ [*// comment*]
@@ -408,7 +409,7 @@ function repairMupSpan(body: string): string {
     /(▲|◀)[ \t]*((?:<span[^>]*>[^<>]*<\/span>[ \t]*)+)([ \t]*\*[^*\n]*\*)?/g,
     function(_, arrow, cnParts) {
       const { pfx, cn } = _extractPfxCn(cnParts);
-      return arrow + 'm[' + pfx + '=' + cn + ']';
+      return '$' + arrow + 'm[' + pfx + '=' + cn + ']$';
     }
   );
   // 閉じ膜(span内): <span>▲</span> <span class="mup-pfx-*">cn</span>+
@@ -416,7 +417,7 @@ function repairMupSpan(body: string): string {
     /<span[^>]*>(▲|◀)<\/span>[ \t]*((?:<span[^>]*>[^<>]*<\/span>[ \t]*)+)([ \t]*\*[^*\n]*\*)?/g,
     function(_, arrow, cnParts) {
       const { pfx, cn } = _extractPfxCn(cnParts);
-      return arrow + 'm[' + pfx + '=' + cn + ']';
+      return '$' + arrow + 'm[' + pfx + '=' + cn + ']$';
     }
   );
   // 閉じ膜の直後に続くテキストを次行へ移動（TinyMCEが膜フッター内に追記した場合の対応）
@@ -612,7 +613,7 @@ joplin.plugins.register({
           }
           if (note) {
             // ③ しおりプレーンテキスト復旧: "🔖 label" → "\🔖[label]"
-            let repaired = note.body.replace(/^🔖 (.+)$/gm, '🔖m[$1]');
+            let repaired = note.body.replace(/^🔖 (.+)$/gm, '$🔖m[$1]$');
             // ④ span破壊・バックスラッシュ増殖・\\\を repairMupSpan で一括修復
             repaired = repairMupSpan(repaired);
             if (repaired !== note.body) {
@@ -755,7 +756,7 @@ joplin.plugins.register({
 
         _isAutoRepairing = true;
         try {
-          let repaired = noteM.body.replace(/^🔖 (.+)$/gm, '🔖m[$1]');
+          let repaired = noteM.body.replace(/^🔖 (.+)$/gm, '$🔖m[$1]$');
           repaired = repairMupSpan(repaired);
           if (repaired !== noteM.body) {
             await joplin.data.put(['notes', noteM.id], null, { body: repaired });
@@ -841,7 +842,7 @@ joplin.plugins.register({
               // WYSIWYGモードでは書き込まない（新アーキテクチャ原則: WYSIWYG is read-only）
               // 修復はMarkdownモード切替時（CN=7538）に委ねる
               if (!(await isMarkdownMode())) break;
-              let repaired = outNote.body.replace(/^🔖 (.+)$/gm, '🔖m[$1]');
+              let repaired = outNote.body.replace(/^🔖 (.+)$/gm, '$🔖m[$1]$');
               repaired = repairMupSpan(repaired);
               if (repaired !== outNote.body) {
                 await joplin.data.put(['notes', outgoingId], null, { body: repaired });
@@ -859,7 +860,7 @@ joplin.plugins.register({
         // WYSIWYGモードでは書き込まない（新アーキテクチャ原則: WYSIWYG is read-only）
         if (_hasMembrane2 && _hasDmg(incoming!.body) && (await isMarkdownMode())) {
           try {
-            let repaired = incoming.body.replace(/^🔖 (.+)$/gm, '🔖m[$1]');
+            let repaired = incoming.body.replace(/^🔖 (.+)$/gm, '$🔖m[$1]$');
             repaired = repairMupSpan(repaired);
             if (repaired !== incoming.body) {
               await joplin.data.put(['notes', incoming.id], null, { body: repaired });
@@ -936,7 +937,7 @@ joplin.plugins.register({
       label: 'Insert Membrane ▼▲',
       iconName: 'fas fa-caret-down',
       execute: async () => {
-        await insertTemplate('\n▼m[CN=new] // comment [⊕0+0]\ncontent here\n▲m[CN=new]\n');
+        await insertTemplate('\n$▼m[CN=new]$ // comment [⊕0+0]\ncontent here\n$▲m[CN=new]$\n');
       },
     });
 
@@ -945,7 +946,7 @@ joplin.plugins.register({
       label: 'Insert Membrane ▶◀ (default fold)',
       iconName: 'fas fa-caret-right',
       execute: async () => {
-        await insertTemplate('\n▶m[CN=new] // comment [⊕0+0]\ncontent here\n◀m[CN=new]\n');
+        await insertTemplate('\n$▶m[CN=new]$ // comment [⊕0+0]\ncontent here\n$◀m[CN=new]$\n');
       },
     });
 
@@ -992,14 +993,14 @@ joplin.plugins.register({
             if (note && (note.body.includes('<span') || /^\\{3}$/m.test(note.body) || /^🔖 .+$/m.test(note.body) || /\\{2,}[▼▶▲◀]/.test(note.body))) break;
           }
           if (!note) return;
-          let repaired = note.body.replace(/^🔖 (.+)$/gm, '🔖m[$1]');
+          let repaired = note.body.replace(/^🔖 (.+)$/gm, '$🔖m[$1]$');
           repaired = repairMupSpan(repaired);
           if (repaired !== note.body) await joplin.data.put(['notes', note.id], null, { body: repaired });
         } else {
           // Markdownモード: 直接修復
           const note = await joplin.workspace.selectedNote();
           if (!note) return;
-          let repaired = note.body.replace(/^🔖 (.+)$/gm, '🔖m[$1]');
+          let repaired = note.body.replace(/^🔖 (.+)$/gm, '$🔖m[$1]$');
           repaired = repairMupSpan(repaired);
           if (repaired !== note.body) await joplin.data.put(['notes', note.id], null, { body: repaired });
         }
@@ -1025,7 +1026,7 @@ joplin.plugins.register({
         }
         const note = await joplin.workspace.selectedNote();
         if (!note) return;
-        let repaired = note.body.replace(/^🔖 (.+)$/gm, '🔖m[$1]');
+        let repaired = note.body.replace(/^🔖 (.+)$/gm, '$🔖m[$1]$');
         repaired = repairMupSpan(repaired); // CN=4821エンティティデコードも内包
         if (repaired !== note.body) {
           await joplin.data.put(['notes', note.id], null, { body: repaired });
@@ -1044,20 +1045,18 @@ joplin.plugins.register({
         // {8530_commands} ⇒ Me ⇒ {5139_onMessage.TOGGLE_EDITOR}
         if (await isMarkdownMode()) {
           // Markdownモード: 🔖m記法をそのまま挿入（左ペインに表示・右ペインはボタン描画）
-          await insertTemplate('\n🔖m[Here 🔖!!]\n');
+          await insertTemplate('\n$🔖m[Here 🔖!!]$\n');
         } else {
-          // WYSIWYGモード: 🔖m[label]プレーンテキストをmceInsertContentで直接挿入
-          // TinyMCEにとってただのテキスト → サニタイザー完全回避
-          // Markdownに変換後は🔖m[label]記法として保存 → レンダラーがボタン化
+          // WYSIWYGモード: $🔖m[label]$プレーンテキストをmceInsertContentで直接挿入
+          // TinyMCEのKaTeXウィジェットとして保護される
           try {
             await joplin.commands.execute('editor.execCommand', {
               name: 'mceInsertContent',
-              value: '🔖m[Here 🔖!!]',
+              value: '$🔖m[Here 🔖!!]$',
               ui: false,
             });
           } catch(e) {
-            // フォールバック
-            await insertTemplate('\n🔖m[Here 🔖!!]\n');
+            await insertTemplate('\n$🔖m[Here 🔖!!]$\n');
           }
         }
         // \▲[CN=4471_mupInsertBookmark.EXEC]
@@ -1149,14 +1148,18 @@ joplin.plugins.register({
           _migSlots.push(m);
           return '\x00MIG' + (_migSlots.length - 1) + '\x00';
         });
-        // \▼[ → ▼m[  等（旧バックスラッシュ記法）
-        body = body.replace(/\$?\\([▼▶▲◀])\[([^\]]*)\]\$?/g, '$1m[$2]');
-        // A▼[ / M▼[ / $▼_M[$ → ▼m[ 等（A記法・M記法・$▼_M$からの移行）
-        body = body.replace(/\$?[AM]([▼▶▲◀])\[([^\]]*)\]\$?/g, '$1m[$2]');
-        body = body.replace(/\$?([▼▶▲◀])_[Mm🄼]\[([^\]]*)\]\$?/g, '$1m[$2]');
-        // \🔖[label] / A🔖[label] / M🔖[label] / $🔖_M[label]$ → 🔖m[label]
-        body = body.replace(/\$?\\🔖\[([^\]]*)\]\$?/g, '🔖m[$1]');
-        body = body.replace(/\$?(?:[AM]🔖|🔖_[Mm🄼])\[([^\]]*)\]\$?/g, '🔖m[$1]');
+        // \▼[ → $▼m[$  等（旧バックスラッシュ記法）
+        body = body.replace(/\$?\\([▼▶▲◀])\[([^\]]*)\]\$?/g, '$$1m[$2]$$');
+        // A▼[ / M▼[ / $▼_M[$ → $▼m[$ 等（A記法・M記法・$▼_M$からの移行）
+        body = body.replace(/\$?[AM]([▼▶▲◀])\[([^\]]*)\]\$?/g, '$$1m[$2]$$');
+        body = body.replace(/\$?([▼▶▲◀])_[Mm🄼]\[([^\]]*)\]\$?/g, '$$1m[$2]$$');
+        // $なし ▼m[ → $▼m[$ （$なし記法を$付きに統一）
+        body = body.replace(/(?<!\$)([▼▶▲◀])m\[([^\]]*)\](?!\$)/g, '$$1m[$2]$$');
+        // \🔖[label] / A🔖[label] / M🔖[label] / $🔖_M[label]$ → $🔖m[label]$
+        body = body.replace(/\$?\\🔖\[([^\]]*)\]\$?/g, '$🔖m[$1]$$');
+        body = body.replace(/\$?(?:[AM]🔖|🔖_[Mm🄼])\[([^\]]*)\]\$?/g, '$🔖m[$1]$$');
+        // $なし 🔖m[ → $🔖m[$
+        body = body.replace(/(?<!\$)🔖m\[([^\]]*)\](?!\$)/g, '$🔖m[$1]$$');
         // 保護解除
         body = body.replace(/\x00MIG(\d+)\x00/g, (_: string, i: string) => _migSlots[Number(i)]);
         if (body !== note.body) {
