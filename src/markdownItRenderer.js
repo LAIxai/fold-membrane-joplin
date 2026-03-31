@@ -1,8 +1,8 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 2.8
- * @date    2026.03.30(月)
+ * @version 2.9
+ * @date    2026.03.31(火)
  * @desc    v2.0: H1=/H2=/H3= prefix型サポート、CN=H1旧形式廃止、pfx/cn分離
  *          v2.2: H1=型を<h1>→<span class="mup-pfx-*">に変更（TinyMCEの#変換を防止）; 閉じ膜フッターのpfx埋込み方式をclassに統一
  *          v2.3: $\▼[CN=...]$ / $\🔖[...]$ 形式（LaTeX保護記法）対応。`$形式と両立。
@@ -11,15 +11,31 @@
  *          v2.6: A記法に全面切替（\▼→A▼, \🔖→A🔖等）。バックスラッシュ増殖問題の根本解決。
  *          v2.7: A記法→M記法（Membrane/膜の頭文字）
  *          v2.8: 正式記法を$M▼[CN=...]$に統一（$はオプション、両形式を受理）
+ *          v2.9: 記法を$▼_M[CN=...]$に変更（▼先頭・_MはLaTeXサブスクリプト）。旧$M▼形式も受理。KaTeX競合修正: katexバンドルで自前レンダリング。
  * @author  俊克 + Claude (Anthropic)
  * @desc    markMup膜記法をJoplinのMarkdown-itでHTMLレンダリングする
  */
 'use strict';
 
+// \▼[CN=RENDERER.KATEX] // KaTeX（バンドル）
+var _katex = null;
+try { _katex = require('katex'); } catch(e) {}
+function renderMath(formula, display) {
+  if (!_katex) return escH((display ? '$$' : '$') + formula + (display ? '$$' : '$'));
+  try {
+    return _katex.renderToString(formula, {displayMode: !!display, throwOnError: false, output: 'html'});
+  } catch(e) {
+    return escH((display ? '$$' : '$') + formula + (display ? '$$' : '$'));
+  }
+}
+// \▲[CN=RENDERER.KATEX]
+
 // \▼[CN=RENDERER.CONST] // 定数
-var RE_O  = /^[ \t]*\$?M(▼|▶)\[(CN|H[1-3])=([^\]]+)\]/;  // $M▼ / M▼（$オプション） / CN= と H1=/H2=/H3= 対応
-var RE_C  = /^[ \t]*\$?M(▲|◀)\[(CN|H[1-3])=([^\]]+)\]/;  // $M▲ / M▲（$オプション） / CN= と H1=/H2=/H3= 対応
-var RE_BM        = /^[ \t]*\$?M🔖\[([^\]]*)\]/;            // $M🔖[ラベル] / M🔖[ラベル]（$オプション）
+// 新記法 $▼_M[CN=...]$ と旧記法 $M▼[CN=...]$ の両方を受理（後方互換）
+// グループ: om[1]||om[2]=矢印, om[3]=pfx(CN|H1-3), om[4]=cn名
+var RE_O  = /^[ \t]*\$?(?:(▼|▶)_[Mm🄼]|[Mm🄼](▼|▶))\[(CN|H[1-3])=([^\]]+)\]\$?/;
+var RE_C  = /^[ \t]*\$?(?:(▲|◀)_[Mm🄼]|[Mm🄼](▲|◀))\[(CN|H[1-3])=([^\]]+)\]\$?/;
+var RE_BM = /^[ \t]*\$?(?:🔖_[Mm🄼]|[Mm🄼]🔖)\[([^\]]*)\]\$?/;           // $🔖_M[ラベル]$ / $M🔖[ラベル]$ 両対応
 var RE_BM_DIV    = /<(?:div|span)[^>]*data-mup="bookmark"[^>]*data-mup-label="([^"]*)"[^>]*>/; // HTML div/span形式
 var DEPTH_COLORS = ['#9b6fc4','#5588cc','#4aaa6a','#c8a040','#cc7744','#44aacc'];
 var SN_CMDS = ['fnm','sur','spfx','sfx','pfx','orgdiv','orgname','orgaddress',
@@ -57,9 +73,14 @@ function expandSN(s){
 }
 function inlineStd(s){
   if(!s)return'';
+  // 膜記法パターンを先に保護（$▼_M[...]$ / $M▼[...]$ 等がKaTeXに誤処理されるのを防ぐ）
+  var mupMathSlots=[];
+  s=s.replace(/\$(?:[▼▶▲◀🔖]_[Mm🄼]|[Mm🄼][▼▶▲◀🔖])\[[^\]]*\]\$/g,function(m){
+    var i=mupMathSlots.length;mupMathSlots.push(m);return'\x00MUPM'+i+'\x00';
+  });
   var maths=[];
-  s=s.replace(/\$\$([\s\S]*?)\$\$/g,function(_,m){var i=maths.length;maths.push('$$'+m+'$$');return'MPHZ'+i+'Z';});
-  s=s.replace(/\$([^$\n]+?)\$/g,function(_,m){var i=maths.length;maths.push('$'+m+'$');return'MPHZ'+i+'Z';});
+  s=s.replace(/\$\$([\s\S]*?)\$\$/g,function(_,m){var i=maths.length;maths.push(renderMath(m,true));return'MPHZ'+i+'Z';});
+  s=s.replace(/\$([^$\n]+?)\$/g,function(_,m){var i=maths.length;maths.push(renderMath(m,false));return'MPHZ'+i+'Z';});
   s=s.replace(/\\\\/g,'<br>').replace(/\\ /g,' ').replace(/\\~/g,'\u00a0');
   s=applyFmt(s,'textbf','<strong>','</strong>');
   s=applyFmt(s,'textit','<em>','</em>');
@@ -80,6 +101,7 @@ function inlineStd(s){
   s=s.replace(/\\[a-zA-Z]+\b\*?\s*/g,'').replace(/\{([^{}]*)\}/g,'$1');
   s=s.replace(/\s{2,}/g,' ').trim();
   s=s.replace(/MPHZ(\d+)Z/g,function(_,i){return maths[parseInt(i)];});
+  s=s.replace(/\x00MUPM(\d+)\x00/g,function(_,i){return mupMathSlots[parseInt(i)];});
   return s;
 }
 function inlineByMode(s,mode){
@@ -107,14 +129,15 @@ function parseMembranes(lines){
     var om=RE_O.exec(lines[i]),cm=RE_C.exec(lines[i]);
     if(om){
       var rawLine=(lines[i].match(/\/\/\s*(.+)$/)||[])[1]||'';
-      var raw=rawLine.replace(/\$`?\s*$/, '').trim(); // 末尾の $` または $ を除去（`$形式・$形式両対応）
+      var raw=rawLine.replace(/\$`?\s*$/, '').trim(); // 末尾の $` または $ を除去
       var parsed=parseStatus(raw);
-      var pfx=om[2].trim(),cn=om[3].trim(); // pfx=(CN|H1|H2|H3), cn=名前
-      var b={sym:om[1],pfx:pfx,cn:cn,startLine:i,endLine:-1,depth:stack.length,
+      var pfx=om[3].trim(),cn=om[4].trim(); // pfx=(CN|H1|H2|H3), cn=名前
+      // om[1]||om[2]=矢印（新記法▼_M=om[1], 旧記法M▼=om[2]）
+      var b={sym:om[1]||om[2],pfx:pfx,cn:cn,startLine:i,endLine:-1,depth:stack.length,
              comment:parsed.comment, status:parsed.status};
       stack.push(b);blocks.push(b);
     } else if(cm){
-      var cpfx=cm[2].trim(),ccn=cm[3].trim();
+      var cpfx=cm[3].trim(),ccn=cm[4].trim(); // cm[1]||cm[2]=矢印
       for(var k=stack.length-1;k>=0;k--){
         if(stack[k].pfx===cpfx&&stack[k].cn===ccn){stack[k].endLine=i;stack.splice(k,1);break;}
       }
@@ -220,9 +243,9 @@ function renderMarkMup(src,mode){
     // \▼[CN=RENDERER.HTML.LOOP.CLOSE] // 膜終了行（フッター表示付き）
     } else if(RE_C.test(line)){
       var cm2=RE_C.exec(line);
-      var ccpfx=cm2[2].trim(); // pfx
-      var ccn=cm2[3].trim();   // cn
-      var csym=cm2[1]; // ▲ or ◀
+      var ccpfx=cm2[3].trim(); // pfx
+      var ccn=cm2[4].trim();   // cn
+      var csym=cm2[1]||cm2[2]; // ▲ or ◀（新記法=cm2[1], 旧記法=cm2[2]）
       var ckey=ccpfx+':'+ccn;
       for(var si=openStack.length-1;si>=0;si--){
         if(openStack[si]===ckey){
@@ -295,7 +318,8 @@ module.exports = {
         // \▼[CN=RENDERER.JOPLIN.MARKMUP] // 膜記法レンダラー（膜ありノート用）
         markdownIt.core.ruler.push('markMup',function(state){
           var src=state.src;
-          if(!/\$?M[▼▶▲◀]\[(CN|H[1-3])=|\$?M🔖\[/.test(src)) return false;
+          // 新記法 $▼_M[...] / 旧記法 $M▼[...] 両方を検出
+          if(!/[▼▶▲◀]_[Mm🄼]\[|[Mm🄼][▼▶▲◀]\[|🔖_[Mm🄼]\[|[Mm🄼]🔖\[/.test(src)) return false;
           var mode=/^%\s*nature/im.test(src)?'nature':'std';
           state.tokens=[];
           var token=new state.Token('html_block','',0);
