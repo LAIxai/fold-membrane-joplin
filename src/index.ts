@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.13
+ * @version 8.14
  * @date    2026.03.31(火)
  * @author  俊克 + Claude (Anthropic)
  * @desc
@@ -160,6 +160,7 @@
  *   v8.11 2026.03.31(火) 正式記法を▼m[CN=...]に変更（$なし・#見出し感覚）; repairMupSpan出力も▼m形式に統一; markdownItRenderer.js v3.0
  *   v8.12 2026.03.31(火) データ上は$▼m[...]$（KaTeX保護）を維持。$なしはREADME(GitHub)のみ。template/repair/$を全復元。
  *   v8.13 2026.03.31(火) markdownItRenderer.js v3.1: 🔖 label破損形式をデータ変更なしで表示修復（RE_BM拡張・検出条件を▼m[3文字チェックに統合）
+ *   v8.14 2026.03.31(火) CN=3417: isMarkdownMode()ガード除去。WYSIWYGモードでも別ノート切替時に修復発火（WYSIWYG→MD切替と同一処理）
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -840,9 +841,6 @@ joplin.plugins.register({
             // 膜あり → _hasDmg(CN=6174)で破損検出 → 即修復
             // 旧バージョン破損（分断リンク・file:///・HTMLテーブル）もここで対応
             if (_hasDmg(outNote.body)) {
-              // WYSIWYGモードでは書き込まない（新アーキテクチャ原則: WYSIWYG is read-only）
-              // 修復はMarkdownモード切替時（CN=7538）に委ねる
-              if (!(await isMarkdownMode())) break;
               let repaired = outNote.body.replace(/^🔖 (.+)$/gm, '$🔖m[$1]$');
               repaired = repairMupSpan(repaired);
               if (repaired !== outNote.body) {
@@ -858,8 +856,7 @@ joplin.plugins.register({
         // _hasDmg(CN=6174)で検出: mup-span破壊 + 旧バージョンDB保存済み破損（分断リンク・file:///・HTMLテーブル）
         // 膜記法なし → 修復不要（安全のため必ず_hasMembrane確認）
         const _hasMembrane2 = incoming?.body && (/(?:[▼▶▲◀]m|M[▼▶▲◀]|[▼▶▲◀]_M)/.test(incoming.body) || /^🔖 /.test(incoming.body));
-        // WYSIWYGモードでは書き込まない（新アーキテクチャ原則: WYSIWYG is read-only）
-        if (_hasMembrane2 && _hasDmg(incoming!.body) && (await isMarkdownMode())) {
+        if (_hasMembrane2 && _hasDmg(incoming!.body)) {
           try {
             let repaired = incoming.body.replace(/^🔖 (.+)$/gm, '$🔖m[$1]$');
             repaired = repairMupSpan(repaired);
