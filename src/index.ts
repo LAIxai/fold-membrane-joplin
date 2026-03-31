@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.12
+ * @version 8.13
  * @date    2026.03.31(火)
  * @author  俊克 + Claude (Anthropic)
  * @desc
@@ -159,6 +159,7 @@
  *   v8.10 2026.03.31(火) 記法を$▼_M[CN=...]$に変更（▼先頭・_MはLaTeXサブスクリプト）。旧$M▼形式も受理; KaTeX競合修正: katexバンドル+renderMath()で自前レンダリング; markdownItRenderer.js v2.9
  *   v8.11 2026.03.31(火) 正式記法を▼m[CN=...]に変更（$なし・#見出し感覚）; repairMupSpan出力も▼m形式に統一; markdownItRenderer.js v3.0
  *   v8.12 2026.03.31(火) データ上は$▼m[...]$（KaTeX保護）を維持。$なしはREADME(GitHub)のみ。template/repair/$を全復元。
+ *   v8.13 2026.03.31(火) markdownItRenderer.js v3.1: 🔖 label破損形式をデータ変更なしで表示修復（RE_BM拡張・検出条件を▼m[3文字チェックに統合）
  * \▲[CN=5831_FILE_HEADER]
  */
 

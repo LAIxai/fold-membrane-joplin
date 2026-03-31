@@ -1,7 +1,7 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 3.0
+ * @version 3.1
  * @date    2026.03.31(火)
  * @desc    v2.0: H1=/H2=/H3= prefix型サポート、CN=H1旧形式廃止、pfx/cn分離
  *          v2.2: H1=型を<h1>→<span class="mup-pfx-*">に変更（TinyMCEの#変換を防止）; 閉じ膜フッターのpfx埋込み方式をclassに統一
@@ -13,6 +13,7 @@
  *          v2.8: 正式記法を$M▼[CN=...]$に統一（$はオプション、両形式を受理）
  *          v2.9: 記法を$▼_M[CN=...]$に変更（▼先頭・_MはLaTeXサブスクリプト）。旧$M▼形式も受理。KaTeX競合修正: katexバンドルで自前レンダリング。
  *          v3.0: 正式記法を▼m[CN=...]に変更（$なし・シンプル・#見出しと同じ感覚）。旧$▼_M/$M▼形式も後方互換で受理。
+ *          v3.1: RE_BMに破損形式（🔖 label）を追加→データ書換なしで表示修復。検出条件を▼m[の3文字チェックに統合。
  * @author  俊克 + Claude (Anthropic)
  * @desc    markMup膜記法をJoplinのMarkdown-itでHTMLレンダリングする
  */
@@ -37,7 +38,8 @@ function renderMath(formula, display) {
 // sym = om[1]||om[2]||om[3]
 var RE_O  = /^[ \t]*\$?(?:(▼|▶)m|(▼|▶)_[Mm🄼]|[Mm🄼](▼|▶))\[(CN|H[1-3])=([^\]]+)\]\$?/;
 var RE_C  = /^[ \t]*\$?(?:(▲|◀)m|(▲|◀)_[Mm🄼]|[Mm🄼](▲|◀))\[(CN|H[1-3])=([^\]]+)\]\$?/;
-var RE_BM = /^[ \t]*\$?(?:🔖m|🔖_[Mm🄼]|[Mm🄼]🔖)\[([^\]]*)\]\$?/;  // ▼m / $▼_M / $M▼ 全形式対応
+// RE_BM グループ: bm[1]=bracket形式ラベル, bm[2]=破損形式ラベル（🔖 label）
+var RE_BM = /^[ \t]*(?:\$?(?:🔖m|🔖_[Mm🄼]|[Mm🄼]🔖)\[([^\]]*)\]\$?|🔖 ([^\n$]+))/;  // 全形式＋破損形式
 var RE_BM_DIV    = /<(?:div|span)[^>]*data-mup="bookmark"[^>]*data-mup-label="([^"]*)"[^>]*>/; // HTML div/span形式
 var DEPTH_COLORS = ['#9b6fc4','#5588cc','#4aaa6a','#c8a040','#cc7744','#44aacc'];
 var SN_CMDS = ['fnm','sur','spfx','sfx','pfx','orgdiv','orgname','orgaddress',
@@ -151,6 +153,18 @@ function parseMembranes(lines){
 
 // \▼[CN=RENDERER.HTML] // HTML生成
 function renderMarkMup(src,mode){
+  // \▼[CN=RENDERER.HTML.FIXDISPLAY] // 表示用のみの前処理（データ書換なし）
+  // WYSIWYGがspan形式に破壊した膜・栞を描画前に一時修復する
+  // 開き膜: <span>▼</span><span class="mup-pfx-CN">name</span> → ▼m[CN=name]
+  src = src.replace(/<span[^>]*>(▼|▶)<\/span>[ \t]*<span[^>]*class="[^"]*mup-pfx-([^"\s]+)[^"]*"[^>]*>([^<]*)<\/span>/g,
+    function(_,arrow,pfx,cn){return arrow+'m['+pfx+'='+cn.trim()+']';});
+  // 閉じ膜: ▲/◀ <span class="mup-pfx-CN">name</span> → ▲m[CN=name]
+  src = src.replace(/(▲|◀)[ \t]*<span[^>]*class="[^"]*mup-pfx-([^"\s]+)[^"]*"[^>]*>([^<]*)<\/span>/g,
+    function(_,arrow,pfx,cn){return arrow+'m['+pfx+'='+cn.trim()+']';});
+  // 閉じ膜: <span>▲</span><span class="mup-pfx-CN">name</span> → ▲m[CN=name]
+  src = src.replace(/<span[^>]*>(▲|◀)<\/span>[ \t]*<span[^>]*class="[^"]*mup-pfx-([^"\s]+)[^"]*"[^>]*>([^<]*)<\/span>/g,
+    function(_,arrow,pfx,cn){return arrow+'m['+pfx+'='+cn.trim()+']';});
+  // \▲[CN=RENDERER.HTML.FIXDISPLAY]
   var lines=src.split('\n');
   var blocks=parseMembranes(lines);
 
@@ -275,7 +289,7 @@ function renderMarkMup(src,mode){
     // \▼[CN=RENDERER.HTML.LOOP.BOOKMARK] // 🔖しおり＆エディタ切替ボタン行
     } else if(RE_BM.test(line)||RE_BM_DIV.test(line)){
       var bmmatch=RE_BM.test(line)?RE_BM.exec(line):RE_BM_DIV.exec(line);
-      var bmlabel=escH((bmmatch[1]||'bookmark').trim());
+      var bmlabel=escH(((bmmatch[1]||bmmatch[2]||'bookmark')).trim());
       var bmClass='mup-bookmark';
       var bmStyle='display:inline-flex;align-items:center;gap:6px;'
            +'padding:3px 12px;background:#fff8e1;border:1px solid #ffcc02;'
@@ -320,8 +334,9 @@ module.exports = {
         // \▼[CN=RENDERER.JOPLIN.MARKMUP] // 膜記法レンダラー（膜ありノート用）
         markdownIt.core.ruler.push('markMup',function(state){
           var src=state.src;
-          // ▼m記法（正式）+ $▼_M（旧）+ M▼（旧々）をすべて検出
-          if(!/[▼▶▲◀]m\[|🔖m\[|[▼▶▲◀]_[Mm🄼]\[|[Mm🄼][▼▶▲◀]\[|🔖_[Mm🄼]\[|[Mm🄼]🔖\[/.test(src)) return false;
+          // 膜ノート検出: ▼m[ の3文字（正式）または旧記法
+          if(src.indexOf('▼m[') < 0 && src.indexOf('▶m[') < 0 &&
+             !/[▼▶▲◀]_[Mm🄼]\[|[Mm🄼][▼▶▲◀]\[|🔖_[Mm🄼]\[|[Mm🄼]🔖\[/.test(src)) return false;
           var mode=/^%\s*nature/im.test(src)?'nature':'std';
           state.tokens=[];
           var token=new state.Token('html_block','',0);
