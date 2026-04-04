@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.20
- * @date    2026.04.01(水)
+ * @version 8.14
+ * @date    2026.03.31(火)
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -161,12 +161,6 @@
  *   v8.12 2026.03.31(火) データ上は$▼m[...]$（KaTeX保護）を維持。$なしはREADME(GitHub)のみ。template/repair/$を全復元。
  *   v8.13 2026.03.31(火) markdownItRenderer.js v3.1: 🔖 label破損形式をデータ変更なしで表示修復（RE_BM拡張・検出条件を▼m[3文字チェックに統合）
  *   v8.14 2026.03.31(火) CN=3417: isMarkdownMode()ガード除去。WYSIWYGモードでも別ノート切替時に修復発火（WYSIWYG→MD切替と同一処理）
- *   v8.15 2026.03.31(火) CN=3417①②: _hasDmgを_hasMemberaneより先にチェック（spanform破損後▼m[パターン消失→_hasMembrane=false早期breakバグ修正）; ②_hasMembrane2廃止→_hasDmgのみ判定
- *   v8.16 2026.03.31(火) CN=9031復活: WYSIWYG内ノート切替→膜ノート表示リフレッシュ（toggleEditors→editor.setTextに変更・cursor reset解消）。根本原因: データ正常($▼m[]$, KaTeX保護)なのにTinyMCEが再描画しないJoplinバグの回避
- *   v8.17 2026.03.31(火) CN=9031改: updated_time比較方式に変更（編集ありの時だけ再描画。編集なし切替は過剰な再描画なし）; onNoteSelectionChangeにupdated_timeベースライン保存追加
- *   v8.18 2026.03.31(火) markdownItRenderer.js v3.2: CN=RENDERER.HTML.LOOP.HR拡張: * * * / --- / ___ をMarkdown HR記法として<hr>に変換（WYSIWYG→MD→WYSIWYG往復で罫線がテキスト化するバグ修正）
- *   v8.19 2026.04.01(水) markdownItRenderer.js v3.3: 罫線増殖バグ修正（空行スペーサー<p style="height:0.8em">削除→TinyMCEが<hr>変換する根本原因除去; <hr style="margin:0.5em 0">でCSS視覚余白確保）
- *   v8.20 2026.04.01(水) markdownItRenderer.js v4.0: 全面リアーキテクチャ。膜行・栞行のみプレースホルダーに置換→markdown-itにネイティブ処理を委譲。renderMarkMup（全行自前処理）廃止。罫線・空行・太字等はJoplin標準処理で完全解決。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -729,8 +723,6 @@ joplin.plugins.register({
     let _isAutoRepairing = false;
     const _initNoteForMW = await joplin.workspace.selectedNote();
     let _autoRepairPrevNoteId: string | null = _initNoteForMW?.id ?? null;
-    // CN=9031用: ノートを初めて開いたときの updated_time を保持（編集検出に使用）
-    const _noteLastSeenTime = new Map<string, number>();
     setInterval(async () => {
       if (_isAutoRepairing) return;
       const nowMarkdown = await isMarkdownMode();
@@ -800,30 +792,8 @@ joplin.plugins.register({
       }
       // \▲[CN=3291_modeWatcher.WYSIWYG_CSS]
 
-      // \▼[CN=9031_modeWatcher.NOTE_SWITCH.REPAIR] // WYSIWYG内ノート切替: updated_time変化時のみ再描画
-      // v7.99で無効化していたが v8.17で復活（updated_time比較方式）。
-      // 理由: WYSIWYGで編集後ノート切替→戻ると、データは正常($▼m[...]$, KaTeX保護で破壊なし)なのに
-      //       TinyMCEが正しく再描画しないJoplinバグの回避策。
-      // 方式: ノートを最初に開いたときのupdated_timeを_noteLastSeenTimeに保存。
-      //       返ってきたとき(noteChangedInWYSIWYG)に現在のupdated_timeと比較。
-      //       変わっていれば編集があったと判断→editor.setTextで再描画。変わっていなければスキップ。
-      if (noteChangedInWYSIWYG && nowNoteId) {
-        const _savedTime = _noteLastSeenTime.get(nowNoteId);
-        if (_savedTime !== undefined) {
-          try {
-            const _curNote = await joplin.data.get(['notes', nowNoteId], { fields: ['id', 'body', 'updated_time'] });
-            if (_curNote?.updated_time && _curNote.updated_time !== _savedTime) {
-              // updated_time変化 = 編集あり → 再描画
-              const _hasM = _curNote.body && (/(?:[▼▶▲◀]m|M[▼▶▲◀]|[▼▶▲◀]_M)/.test(_curNote.body) || /^🔖 /.test(_curNote.body));
-              if (_hasM) {
-                await joplin.commands.execute('editor.setText', _curNote.body);
-              }
-              // 新しいtimestampをベースラインに更新
-              _noteLastSeenTime.set(nowNoteId, _curNote.updated_time);
-            }
-          } catch(_e) {}
-        }
-      }
+      // \▼[CN=9031_modeWatcher.NOTE_SWITCH.REPAIR] // [無効化 v7.99] WYSIWYG切替先ノートのspan修復
+      // 新アーキテクチャ原則: WYSIWYGは書き込まない → toggleEditors往復修復は不要
       // \▲[CN=9031_modeWatcher.NOTE_SWITCH.REPAIR]
 
       // \▼[CN=1647_modeWatcher.HR_RESTORE] // [無効化 v7.76] Markdown→WYSIWYG: <hr>テキストを実罫線に自動変換
@@ -850,14 +820,6 @@ joplin.plugins.register({
         const outgoingId = _prevNoteId;
         _prevNoteId = incomingId;
 
-        // CN=9031用: incomingノートを初めて見るときだけupdated_timeを保存（ベースライン）
-        // 既にmapにあれば上書きしない（初回開封時の時刻を保持し、編集後の比較に使う）
-        if (incomingId && !_noteLastSeenTime.has(incomingId)) {
-          joplin.data.get(['notes', incomingId], { fields: ['updated_time'] }).then((n: any) => {
-            if (n?.updated_time) _noteLastSeenTime.set(incomingId, n.updated_time);
-          }).catch(() => {});
-        }
-
         if (!outgoingId || outgoingId === incomingId) return;
         // CN=9031(toggleEditors往復)と並列実行しない（同時操作でJoplin IPC過負荷防止）
         if (_isAutoRepairing) return;
@@ -873,10 +835,11 @@ joplin.plugins.register({
           try {
             const outNote = await joplin.data.get(['notes', outgoingId], { fields: ['id', 'body'] });
             if (!outNote?.body) break;
-            // 破損検出 → 即修復（_hasMemberaneより先にチェック）
-            // 理由: WYSIWYGで編集後、TinyMCEが$▼m[CN=xxx]$→<span>▼</span>...<span class="mup-pfx-CN">xxx</span>に
-            //       シリアライズすると▼m[パターンが消える → _hasMembrane=falseで早期breakしてしまう根本バグを修正。
-            //       _hasDmgが<span>を検出できていれば膜の有無に関わらず修復を試みる。
+            // 膜記法なし → 修復不要（リンク・画像・テーブルのspanは対象外）
+            const _hasMembrane = /(?:[▼▶▲◀]m|M[▼▶▲◀]|[▼▶▲◀]_M)/.test(outNote.body) || /^🔖 /.test(outNote.body);
+            if (!_hasMembrane) break;
+            // 膜あり → _hasDmg(CN=6174)で破損検出 → 即修復
+            // 旧バージョン破損（分断リンク・file:///・HTMLテーブル）もここで対応
             if (_hasDmg(outNote.body)) {
               let repaired = outNote.body.replace(/^🔖 (.+)$/gm, '$🔖m[$1]$');
               repaired = repairMupSpan(repaired);
@@ -885,17 +848,15 @@ joplin.plugins.register({
               }
               break;
             }
-            // 破損なし → 膜記法なし → 修復不要・ポーリング不要
-            const _hasMembrane = /(?:[▼▶▲◀]m|M[▼▶▲◀]|[▼▶▲◀]_M)/.test(outNote.body) || /^🔖 /.test(outNote.body);
-            if (!_hasMembrane) break;
             // 膜あり + 破損パターンなし → まだJoplinの自動保存前かもしれない → ループ継続
           } catch(_e: any) { break; }
         }
 
         // ② 受信ノートに破損があれば先行修復（次回このノートに戻ったとき綺麗に表示）
         // _hasDmg(CN=6174)で検出: mup-span破壊 + 旧バージョンDB保存済み破損（分断リンク・file:///・HTMLテーブル）
-        // _hasMembrane2チェック廃止: spanform破損後は▼m[パターンが消えるため、_hasDmgのみで判定
-        if (incoming?.body && _hasDmg(incoming!.body)) {
+        // 膜記法なし → 修復不要（安全のため必ず_hasMembrane確認）
+        const _hasMembrane2 = incoming?.body && (/(?:[▼▶▲◀]m|M[▼▶▲◀]|[▼▶▲◀]_M)/.test(incoming.body) || /^🔖 /.test(incoming.body));
+        if (_hasMembrane2 && _hasDmg(incoming!.body)) {
           try {
             let repaired = incoming.body.replace(/^🔖 (.+)$/gm, '$🔖m[$1]$');
             repaired = repairMupSpan(repaired);
