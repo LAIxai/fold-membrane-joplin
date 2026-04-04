@@ -12,7 +12,11 @@ document.addEventListener('click', function(e) {
   // \▲[CN=FOLD.CLICK.BOOKMARK]
 
   // \▼[CN=FOLD.CLICK.TARGET] // クリック対象の特定
-  var hd = e.target.closest('.mup-hd');
+  // 閉じ膜フッター(.mup-ft)クリックも同じ膜の開閉をトリガー
+  // `:scope > .mup-hd` = 直接の子要素のみ（ネスト膜の内側ヘッダーを誤取得しない）
+  var ft = e.target.closest('.mup-ft');
+  var hd = e.target.closest('.mup-hd')
+        || (ft ? ft.parentElement.querySelector(':scope > .mup-hd') : null);
   if (!hd) return;
   var mup = hd.parentElement;
   if (!mup || !mup.classList.contains('mup')) return;
