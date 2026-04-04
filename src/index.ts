@@ -1,9 +1,18 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
- * @file    index.ts
- * @version 8.14
- * @date    2026.03.31(火)
- * @author  俊克 + Claude (Anthropic)
+ * @file           index.ts
+ * @version        8.14
+ * @plugin-version 0.9.4
+ * @date           2026.03.31(火)
+ * @author         俊克 + Claude (Anthropic)
+ * @desc
+ *   ─── plugin ver / index.ts ver の対応 ───
+ *   plugin v0.9.0〜v0.9.1  index.ts v7.xx〜v8.11  2026.03.18〜03.31
+ *   plugin v0.9.2           index.ts v8.12          2026.03.31(火)
+ *   plugin v0.9.3           index.ts v8.13          2026.03.31(火)
+ *   plugin v0.9.4           index.ts v8.14          2026.03.31(火) ← 現在
+ *   plugin v0.9.10〜v0.9.12 index.ts v8.15〜v8.22  2026.04.01〜04.04 ※試作・全リバート（キー入力遅延・無限ループ）
+ *   ─────────────────────────────────────────
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
  *   v1.1 2026.03.18 pm01:36 先頭挿入
@@ -158,9 +167,9 @@
  *   v8.09 2026.03.31(火) 正式記法を$M▼[CN=...]$に統一: テンプレート・repair・_bm2mup全更新; markdownItRenderer.js v2.8: $オプション対応
  *   v8.10 2026.03.31(火) 記法を$▼_M[CN=...]$に変更（▼先頭・_MはLaTeXサブスクリプト）。旧$M▼形式も受理; KaTeX競合修正: katexバンドル+renderMath()で自前レンダリング; markdownItRenderer.js v2.9
  *   v8.11 2026.03.31(火) 正式記法を▼m[CN=...]に変更（$なし・#見出し感覚）; repairMupSpan出力も▼m形式に統一; markdownItRenderer.js v3.0
- *   v8.12 2026.03.31(火) データ上は$▼m[...]$（KaTeX保護）を維持。$なしはREADME(GitHub)のみ。template/repair/$を全復元。
- *   v8.13 2026.03.31(火) markdownItRenderer.js v3.1: 🔖 label破損形式をデータ変更なしで表示修復（RE_BM拡張・検出条件を▼m[3文字チェックに統合）
- *   v8.14 2026.03.31(火) CN=3417: isMarkdownMode()ガード除去。WYSIWYGモードでも別ノート切替時に修復発火（WYSIWYG→MD切替と同一処理）
+ *   v8.12 2026.03.31(火) [plugin v0.9.2] データ上は$▼m[...]$（KaTeX保護）を維持。$なしはREADME(GitHub)のみ。template/repair/$を全復元。
+ *   v8.13 2026.03.31(火) [plugin v0.9.3] markdownItRenderer.js v3.1: 🔖 label破損形式をデータ変更なしで表示修復（RE_BM拡張・検出条件を▼m[3文字チェックに統合）
+ *   v8.14 2026.03.31(火) [plugin v0.9.4] CN=3417: isMarkdownMode()ガード除去。WYSIWYGモードでも別ノート切替時に修復発火（WYSIWYG→MD切替と同一処理）
  * \▲[CN=5831_FILE_HEADER]
  */
 
