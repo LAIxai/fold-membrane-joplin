@@ -1,5 +1,6 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v2.3
+// \▼[CN=FOLD] // Fold Membrane - click handler v2.4
 // ─── changelog ───────────────────────────────────────
+// v2.4  2026.04.06(月) 閉じ膜クリック時のmup特定を親を1段ずつ辿る方式に変更（ネスト膜バグ修正）
 // v2.3  2026.04.06(月) 閉じ膜▲アイコンクリックでも開閉トグル対応
 // v2.2  2026.04.06(月) 開閉クリックを▼▶アイコン(.mup-ico)のみに限定
 // v2.1  2026.03.31(火) 閉じ膜クリック機能を削除・安定版
@@ -21,11 +22,15 @@ document.addEventListener('click', function(e) {
   // \▼[CN=FOLD.CLICK.TARGET] // クリック対象の特定（▼▶▲アイコンのみ）
   var ico0 = e.target.closest('.mup-ico');
   if (!ico0) return;
-  var fromHd = !!ico0.closest('.mup-hd');
-  var fromFt = !!ico0.closest('.mup-ft');
-  if (!fromHd && !fromFt) return;
-  var mup = ico0.closest('.mup');
-  if (!mup) return;
+  var hdEl = ico0.closest('.mup-hd');
+  var ftEl = ico0.closest('.mup-ft');
+  if (!hdEl && !ftEl) return;
+  // 開始膜: hd.parentElement = mup
+  // 閉じ膜: ft → mup-bd → mup（closest不使用で1段ずつ辿る）
+  var mup = hdEl
+    ? hdEl.parentElement
+    : (ftEl.parentElement ? ftEl.parentElement.parentElement : null);
+  if (!mup || !mup.classList.contains('mup')) return;
   // \▲[CN=FOLD.CLICK.TARGET]
 
   // \▼[CN=FOLD.CLICK.LOCK] // ⊘ ロック確認
