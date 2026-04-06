@@ -1,4 +1,4 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v2.1
+// \▼[CN=FOLD] // Fold Membrane - click handler v2.2
 
 // \▼[CN=FOLD.CLICK] // クリックイベント
 document.addEventListener('click', function(e) {
