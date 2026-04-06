@@ -776,6 +776,9 @@ joplin.plugins.register({
           let repaired = noteM.body.replace(/^🔖 (.+)$/gm, '$🔖m[$1]$');
           repaired = repairMupSpan(repaired);
           if (repaired !== noteM.body) {
+            // 成済まし防止: data.put前に選択ノートが変わっていないか確認
+            const _checkNote = await joplin.workspace.selectedNote();
+            if (_checkNote?.id !== noteM.id) return;
             await joplin.data.put(['notes', noteM.id], null, { body: repaired });
             // CodeMirrorエディタ（左ペイン）とプレビュー（右ペイン）を即時更新
             // DB保存だけではCodeMirrorは更新されないため、editor.setTextで強制リフレッシュ
@@ -846,6 +849,10 @@ joplin.plugins.register({
       if (_isAutoRepairing) return; // 自プラグイン修復中は無視
       if (_saveDebounce) clearTimeout(_saveDebounce);
       _saveDebounce = setTimeout(() => _runModeCheck(), 500);
+    });
+    // ノート切替時: デバウンスをキャンセル（成済まし防止）
+    await joplin.workspace.onNoteSelectionChange(async () => {
+      if (_saveDebounce) { clearTimeout(_saveDebounce); _saveDebounce = null; }
     });
     // \▲[CN=7538_modeWatcher.AUTOREPAIR]
 

@@ -1,7 +1,7 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 4.0
+ * @version 4.1
  * @date    2026.04.01(水)
  * @desc    v2.x-v3.x: 全行自前処理方式（renderMarkMup）。罫線・空行に副作用あり。
  *          v4.0: 全面リアーキテクチャ。膜行・栞行のみプレースホルダーに置換→
@@ -165,8 +165,10 @@ module.exports = {
     return {
       plugin: function(markdownIt,_options){
 
-        // \▼[CN=RENDERER.JOPLIN.MARKMUP] // 膜記法レンダラー（プレースホルダー方式 v4.0）
+        // \▼[CN=RENDERER.JOPLIN.MARKMUP] // 膜記法レンダラー（プレースホルダー方式 v4.1）
         // 膜行・栞行のみ名札に置換 → markdown-it がネイティブ処理 → 名札を膜divに差し替え
+        // v4.1: 膜タグ行キャッシュ追加（行番号+内容が同じならparseMembranes/buildMupHtmlMapをスキップ）
+        var _mupCache = { key: '', blocks: [], htmlMap: {} };
         markdownIt.core.ruler.push('markMup',function(state){
           var src=state.src;
 
@@ -174,11 +176,29 @@ module.exports = {
           if(src.indexOf('▼m[')<0 && src.indexOf('▶m[')<0 &&
              !/[▼▶▲◀]_[Mm🄼]\[|[Mm🄼][▼▶▲◀]\[|🔖_[Mm🄼]\[|[Mm🄼]🔖\[/.test(src)) return false;
 
-          // \▼[CN=RENDERER.JOPLIN.MARKMUP.PREP] // 前処理・パース
-          src=fixDisplaySrc(src);
-          var lines=src.split('\n');
-          var blocks=parseMembranes(lines);
-          var htmlMap=buildMupHtmlMap(blocks,lines);
+          // \▼[CN=RENDERER.JOPLIN.MARKMUP.PREP] // 前処理・パース（キャッシュ付き）
+          var rawLines=src.split('\n');
+          // 膜タグ行・栞行のみ「行番号:内容」で結合してキャッシュキーを作成
+          var mupKey=rawLines.map(function(l,i){
+            return (RE_O.test(l)||RE_C.test(l)||RE_BM.test(l)||RE_BM_DIV.test(l)) ? i+':'+l : null;
+          }).filter(Boolean).join('\n');
+
+          var blocks, htmlMap;
+          if(mupKey===_mupCache.key && _mupCache.blocks.length>0){
+            // 膜タグ行が変わっていない → キャッシュ利用
+            blocks=_mupCache.blocks;
+            htmlMap=_mupCache.htmlMap;
+          } else {
+            // 膜タグ行が変わった → 全処理してキャッシュ更新
+            var srcFixed=fixDisplaySrc(src);
+            var lines=srcFixed.split('\n');
+            blocks=parseMembranes(lines);
+            htmlMap=buildMupHtmlMap(blocks,lines);
+            _mupCache.key=mupKey;
+            _mupCache.blocks=blocks;
+            _mupCache.htmlMap=htmlMap;
+          }
+          var lines=rawLines; // プレースホルダー置換は元の行を使う
           // \▲[CN=RENDERER.JOPLIN.MARKMUP.PREP]
 
           // \▼[CN=RENDERER.JOPLIN.MARKMUP.PH] // プレースホルダーテーブル構築
