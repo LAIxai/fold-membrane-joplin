@@ -1,12 +1,16 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 4.1
- * @date    2026.04.01(水)
+ * @version 5.0
+ * @date    2026.04.06(月)
  * @desc    v2.x-v3.x: 全行自前処理方式（renderMarkMup）。罫線・空行に副作用あり。
  *          v4.0: 全面リアーキテクチャ。膜行・栞行のみプレースホルダーに置換→
  *                markdown-itにネイティブ処理を委譲。罫線・空行・太字・リンク等は
  *                Joplin標準処理。renderMarkMup廃止。
+ *          v4.1: 膜タグ行キャッシュ追加（行番号+内容が同じならparse/buildをスキップ）
+ *          v5.0: state.tokens直接操作方式。markdownIt.render()の二重呼び出し排除。
+ *                膜行・栞行トークン（paragraph_open+inline+paragraph_close）を
+ *                html_blockトークンに直接差し替え。キー入力遅延を根本解消。
  * @author  俊克 + Claude (Anthropic)
  * @desc    markMup膜記法をJoplinのMarkdown-itでHTMLレンダリングする
  */
@@ -165,9 +169,10 @@ module.exports = {
     return {
       plugin: function(markdownIt,_options){
 
-        // \▼[CN=RENDERER.JOPLIN.MARKMUP] // 膜記法レンダラー（プレースホルダー方式 v4.1）
-        // 膜行・栞行のみ名札に置換 → markdown-it がネイティブ処理 → 名札を膜divに差し替え
-        // v4.1: 膜タグ行キャッシュ追加（行番号+内容が同じならparseMembranes/buildMupHtmlMapをスキップ）
+        // \▼[CN=RENDERER.JOPLIN.MARKMUP] // 膜記法レンダラー（state.tokens直接操作方式 v5.0）
+        // 膜行・栞行のparagraph_open+inline+paragraph_closeトークンをhtml_blockに直接差し替え
+        // markdownIt.render()の二重呼び出しを排除し、キー入力遅延を根本解消
+        // v5.0: state.tokens直接操作（二重レンダリング排除） / v4.1: キャッシュ追加
         var _mupCache = { key: '', blocks: [], htmlMap: {} };
         markdownIt.core.ruler.push('markMup',function(state){
           var src=state.src;
@@ -198,37 +203,25 @@ module.exports = {
             _mupCache.blocks=blocks;
             _mupCache.htmlMap=htmlMap;
           }
-          var lines=rawLines; // プレースホルダー置換は元の行を使う
           // \▲[CN=RENDERER.JOPLIN.MARKMUP.PREP]
 
-          // \▼[CN=RENDERER.JOPLIN.MARKMUP.PH] // プレースホルダーテーブル構築
-          var phToHtml={}; // 名札文字列 → 膜HTML
-          var lineToKey={}; // 行番号 → 名札文字列
-          var idx=0;
-
-          // 膜行（開始・終了）
+          // \▼[CN=RENDERER.JOPLIN.MARKMUP.TOKENS] // state.tokens直接操作（v5.0 二重レンダリング排除）
+          // 行番号 → 膜HTML マップを構築
+          var mupLineHtml={};
           blocks.forEach(function(b){
-            var okey='ZMUP'+(idx++)+'OZ';
-            lineToKey[b.startLine]=okey;
-            phToHtml[okey]=htmlMap[b.startLine]||'';
-            if(b.endLine>=0){
-              var ckey='ZMUP'+(idx++)+'CZ';
-              lineToKey[b.endLine]=ckey;
-              phToHtml[ckey]=htmlMap[b.endLine]||'';
-            }
+            if(htmlMap[b.startLine]!==undefined) mupLineHtml[b.startLine]=htmlMap[b.startLine];
+            if(b.endLine>=0&&htmlMap[b.endLine]!==undefined) mupLineHtml[b.endLine]=htmlMap[b.endLine];
           });
 
-          // 栞行
-          lines.forEach(function(line,i){
-            if(lineToKey[i]!==undefined) return;
+          // 栞行もマップに追加
+          rawLines.forEach(function(line,i){
+            if(mupLineHtml[i]!==undefined) return;
             var bmmatch=null;
             if(RE_BM.test(line)) bmmatch=RE_BM.exec(line);
             else if(RE_BM_DIV.test(line)) bmmatch=RE_BM_DIV.exec(line);
             if(bmmatch){
               var bmlabel=escH(((bmmatch[1]||bmmatch[2]||'bookmark')).trim());
-              var bmkey='ZMUP'+(idx++)+'BMZ';
-              lineToKey[i]=bmkey;
-              phToHtml[bmkey]='<div class="mup-bookmark"'
+              mupLineHtml[i]='<div class="mup-bookmark"'
                 +' data-mup="bookmark" data-mup-label="'+bmlabel+'"'
                 +' style="display:inline-flex;align-items:center;gap:6px;'
                 +'padding:3px 12px;background:#fff8e1;border:1px solid #ffcc02;'
@@ -237,32 +230,23 @@ module.exports = {
                 +'🔖 '+bmlabel+'</div>';
             }
           });
-          // \▲[CN=RENDERER.JOPLIN.MARKMUP.PH]
 
-          // \▼[CN=RENDERER.JOPLIN.MARKMUP.RENDER] // 名札置換 → markdown-it処理 → 差し替え
-          // 膜行・栞行を名札に置換（それ以外はそのまま）
-          var modSrc=lines.map(function(line,i){
-            return lineToKey[i]!==undefined ? lineToKey[i] : line;
-          }).join('\n');
-
-          // markdown-it でネイティストレンダリング（名札が消えているので再帰しない）
-          var html=markdownIt.render(modSrc);
-
-          // 名札 → 膜HTML に差し替え
-          // markdown-it は単独行テキストを <p>名札</p> にラップするので両パターン対応
-          Object.keys(phToHtml).forEach(function(key){
-            html=html.replace(new RegExp('<p>'+key+'<\\/p>\\n?','g'),phToHtml[key]);
-            html=html.replace(new RegExp(key,'g'),phToHtml[key]); // 念のため
-          });
-
-          // tokens を差し替え
-          state.tokens=[];
-          var token=new state.Token('html_block','',0);
-          token.content=html;
-          token.map=[0,state.lineMax];
-          state.tokens.push(token);
+          // state.tokensを逆順スキャン: 膜行・栞行の paragraph_open+inline+paragraph_close を
+          // html_block 1トークンに差し替え（逆順なのでsplice後も前方のインデックスが不変）
+          var tokens=state.tokens;
+          for(var i=tokens.length-3;i>=0;i--){
+            if(tokens[i].type==='paragraph_open'&&tokens[i].map){
+              var lineNum=tokens[i].map[0];
+              if(mupLineHtml[lineNum]!==undefined){
+                var htmlToken=new state.Token('html_block','',0);
+                htmlToken.content=mupLineHtml[lineNum];
+                htmlToken.map=tokens[i].map;
+                tokens.splice(i,3,htmlToken);
+              }
+            }
+          }
           return true;
-          // \▲[CN=RENDERER.JOPLIN.MARKMUP.RENDER]
+          // \▲[CN=RENDERER.JOPLIN.MARKMUP.TOKENS]
         });
         // \▲[CN=RENDERER.JOPLIN.MARKMUP]
 
