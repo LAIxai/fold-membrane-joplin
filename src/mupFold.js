@@ -11,8 +11,10 @@ document.addEventListener('click', function(e) {
   }
   // \▲[CN=FOLD.CLICK.BOOKMARK]
 
-  // \▼[CN=FOLD.CLICK.TARGET] // クリック対象の特定
-  var hd = e.target.closest('.mup-hd');
+  // \▼[CN=FOLD.CLICK.TARGET] // クリック対象の特定（▼▶アイコンのみ）
+  var ico0 = e.target.closest('.mup-ico');
+  if (!ico0) return;
+  var hd = ico0.closest('.mup-hd');
   if (!hd) return;
   var mup = hd.parentElement;
   if (!mup || !mup.classList.contains('mup')) return;
