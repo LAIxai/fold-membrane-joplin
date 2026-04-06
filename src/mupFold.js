@@ -1,5 +1,6 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v2.4
+// \▼[CN=FOLD] // Fold Membrane - click handler v2.5
 // ─── changelog ───────────────────────────────────────
+// v2.5  2026.04.06(月) 同名膜が複数あるときoccurrenceIndexを送信（index.ts側で正しい膜を更新）
 // v2.4  2026.04.06(月) 閉じ膜クリック時のmup特定を親を1段ずつ辿る方式に変更（ネスト膜バグ修正）
 // v2.3  2026.04.06(月) 閉じ膜▲アイコンクリックでも開閉トグル対応
 // v2.2  2026.04.06(月) 開閉クリックを▼▶アイコン(.mup-ico)のみに限定
@@ -67,13 +68,17 @@ document.addEventListener('click', function(e) {
   if (stEl) {
     var cn  = mup.getAttribute('data-mup-cn');
     var pfx = mup.getAttribute('data-mup-pfx') || 'CN'; // v2.1: pfx取得
+    // 同名膜が複数あるとき何番目かを特定（0始まり）
+    var allSameCn = document.querySelectorAll('.mup[data-mup-cn="'+cn+'"][data-mup-pfx="'+pfx+'"]');
+    var occIdx = Array.prototype.indexOf.call(allSameCn, mup);
     webviewApi.postMessage('markMupRenderer', {
       type:  'mupToggle',
       cn:    cn,
       pfx:   pfx,
       state: isOpen ? '⊖' : '⊕',
       count: stEl.getAttribute('data-count'),
-      exp:   stEl.getAttribute('data-exp')
+      exp:   stEl.getAttribute('data-exp'),
+      occurrenceIndex: occIdx >= 0 ? occIdx : 0
     });
   }
   // \▲[CN=FOLD.CLICK.PERSIST]

@@ -659,13 +659,19 @@ joplin.plugins.register({
       const cnPattern = /^\d{4}/.test(rawCn) ? escapedCn : '(?:\\d{4}_)?' + escapedCn;
       const lineRe = new RegExp(
         '((?:[▼▶]m|M[▼▶]|[▼▶]_M)\\[' + mupPfx + '=' + cnPattern + '\\][^\\n]*)(?:\\[(⊕|⊖|⊘)(?:∞|♾️|\\d+)(?:\\+\\d+)?\\]|\\[∞\\]|\\[♾️\\]|\\[\\d+\\])([^\\n]*)',
-        'm'
+        'mg'
       );
       const badge = msg.count === '∞'
         ? '[' + msg.state + '∞]'
         : '[' + msg.state + msg.count + '+' + msg.exp + ']';
-      // group1=prefix, group2=旧stateChar(⊕/⊖/⊘), group3=バッジ後suffix($`など)
-      const newBody = note.body.replace(lineRe, (_, g1, _g2, g3) => g1 + badge + (g3 || ''));
+      // 同名膜が複数あるとき occurrenceIndex 番目のマッチのみ更新
+      const occIdx = typeof msg.occurrenceIndex === 'number' ? msg.occurrenceIndex : 0;
+      let matchCount = 0;
+      const newBody = note.body.replace(lineRe, (match, g1, _g2, g3) => {
+        const result = (matchCount === occIdx) ? g1 + badge + (g3 || '') : match;
+        matchCount++;
+        return result;
+      });
       // \▲[CN=2091_onMessage.REGEX]
 
       // \▼[CN=5763_onMessage.PUT] // DBへ書き戻し（WYSIWYGフォールバック兼用）
