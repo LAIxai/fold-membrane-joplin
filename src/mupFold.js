@@ -1,5 +1,6 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v2.2
+// \▼[CN=FOLD] // Fold Membrane - click handler v2.3
 // ─── changelog ───────────────────────────────────────
+// v2.3  2026.04.06(月) 閉じ膜▲アイコンクリックでも開閉トグル対応
 // v2.2  2026.04.06(月) 開閉クリックを▼▶アイコン(.mup-ico)のみに限定
 // v2.1  2026.03.31(火) 閉じ膜クリック機能を削除・安定版
 // v2.0  2026.03.31(火) 栞ボタン(.mup-bookmark)クリック→エディタ切替 追加
@@ -17,13 +18,14 @@ document.addEventListener('click', function(e) {
   }
   // \▲[CN=FOLD.CLICK.BOOKMARK]
 
-  // \▼[CN=FOLD.CLICK.TARGET] // クリック対象の特定（▼▶アイコンのみ）
+  // \▼[CN=FOLD.CLICK.TARGET] // クリック対象の特定（▼▶▲アイコンのみ）
   var ico0 = e.target.closest('.mup-ico');
   if (!ico0) return;
-  var hd = ico0.closest('.mup-hd');
-  if (!hd) return;
-  var mup = hd.parentElement;
-  if (!mup || !mup.classList.contains('mup')) return;
+  var fromHd = !!ico0.closest('.mup-hd');
+  var fromFt = !!ico0.closest('.mup-ft');
+  if (!fromHd && !fromFt) return;
+  var mup = ico0.closest('.mup');
+  if (!mup) return;
   // \▲[CN=FOLD.CLICK.TARGET]
 
   // \▼[CN=FOLD.CLICK.LOCK] // ⊘ ロック確認
@@ -31,9 +33,10 @@ document.addEventListener('click', function(e) {
   // \▲[CN=FOLD.CLICK.LOCK]
 
   // \▼[CN=FOLD.CLICK.ELEMENTS] // 要素取得
-  var bd  = mup.querySelector('.mup-bd');
-  var ico = hd.querySelector('.mup-ico');
-  var stEl = hd.querySelector('.mup-status');
+  var hd   = mup.querySelector('.mup-hd');
+  var bd   = mup.querySelector('.mup-bd');
+  var ico  = hd ? hd.querySelector('.mup-ico') : null;
+  var stEl = hd ? hd.querySelector('.mup-status') : null;
   if (!bd || !ico) return;
   var sym    = mup.getAttribute('data-mup-sym');
   var isOpen = bd.style.display !== 'none';

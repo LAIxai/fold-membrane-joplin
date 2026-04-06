@@ -2,7 +2,7 @@
 	"manifest_version": 1,
 	"id": "com.LAIxai.FoldMembrane",
 	"app_min_version": "3.5",
-	"version": "0.9.11",
+	"version": "0.9.12",
 	"name": "Fold Membrane",
 	"description": "Co-created with Claude Code AI in just 3.5 days using markMup — a membrane-based structured coding method that delivered 100x efficiency (AI-verified). Fold any content with ▼m/▶m membranes, use H1/H2/H3 or any custom heading, and track open counts with progress badges. Features the world's first 🔖 in-note bookmark button that switches between Markdown and WYSIWYG editors.",
 	"author": "LAI&χai",
@@ -28,6 +28,6 @@
 	"screenshots": [],
 	"icons": {},
 	"promo_tile": {},
-	"_publish_hash": "sha256:81660c081f1d5b5d5d0b221ce57cfff46987c734f55f70247774d7b4de012435",
-	"_publish_commit": "main:9703c69bbeaf3964e66d8654adfc0bda62714959"
+	"_publish_hash": "sha256:bc52812d1cd648d920dd14bcc7834eac991189fdeaec90d6c1ee34665bcb7851",
+	"_publish_commit": "main:dd4df72bd15757caa7a0b45d7350978333fca846"
 }
