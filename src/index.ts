@@ -727,7 +727,8 @@ joplin.plugins.register({
 
     // \▼[CN=7538_modeWatcher.AUTOREPAIR] // モード変化監視: 双方向遷移検出→自動修復
     // ⇒ Me ⇒ {9043_repairMupSpan, 2847_isMarkdownMode, 6174_hasDmg}
-    // editor.codeViewを500msごとに監視し、モード遷移に応じた修復を実行する。
+    // editor.codeViewを5000msごとに監視し、モード遷移に応じた修復を実行する。
+    // Cmd+S保存時(onNoteChange)にも同じ処理を実行。
     // false→true (WYSIWYG→Markdown): span修復
     // true→false (Markdown→WYSIWYG): HR自動変換
     // WYSIWYG内ノート切替 (CN=9031): 切替先ノートにspanあり → toggleEditors往復修復
@@ -737,7 +738,7 @@ joplin.plugins.register({
     let _autoRepairPrevNoteId: string | null = _initNoteForMW?.id ?? null;
     // CN=9031用: ノートを初めて開いたときの updated_time を保持（編集検出に使用）
     const _noteLastSeenTime = new Map<string, number>();
-    setInterval(async () => {
+    const _runModeCheck = async () => {
       if (_isAutoRepairing) return;
       const nowMarkdown = await isMarkdownMode();
       const note = await joplin.workspace.selectedNote();
@@ -836,7 +837,16 @@ joplin.plugins.register({
       // v7.74以降: CN=3819が* * *のまま保持 → markdown-itが<hr>要素として描画 → CN=1647不要
       // mceSetContentはWYSIWYG→Markdown往復で空行を失う副作用があったため廃止。
       // \▲[CN=1647_modeWatcher.HR_RESTORE]
-    }, 500);
+    };
+    // 5秒ごとに監視（旧500ms→5000msに緩和）
+    setInterval(_runModeCheck, 5000);
+    // Cmd+S保存時（onNoteChange）にも即時実行（デバウンス500ms）
+    let _saveDebounce: ReturnType<typeof setTimeout> | null = null;
+    await joplin.workspace.onNoteChange(async () => {
+      if (_isAutoRepairing) return; // 自プラグイン修復中は無視
+      if (_saveDebounce) clearTimeout(_saveDebounce);
+      _saveDebounce = setTimeout(() => _runModeCheck(), 500);
+    });
     // \▲[CN=7538_modeWatcher.AUTOREPAIR]
 
     // \▼[CN=3417_noteSelectWatcher] // ノート切替時: 送出ノートをバックグラウンドで自動修復
