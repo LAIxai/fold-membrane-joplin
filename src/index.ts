@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.22
+ * @version 8.23
  * @date    2026.04.07(火)
  * @author  俊克 + Claude (Anthropic)
  * @desc
@@ -169,6 +169,7 @@
  *   v8.20 2026.04.01(水) markdownItRenderer.js v4.0: 全面リアーキテクチャ。膜行・栞行のみプレースホルダーに置換→markdown-itにネイティブ処理を委譲。renderMarkMup（全行自前処理）廃止。罫線・空行・太字等はJoplin標準処理で完全解決。
  *   v8.21 2026.04.07(火) ①栞単独ノートボタン非表示バグ修正: markdownItRenderer.js v5.1（🔖m[を早期検出条件に追加）。②閉じ膜・中身非表示バグ修正(応急処置): insertTemplateのテンプレートに空行追加。
  *   v8.22 2026.04.07(火) markdownItRenderer.js v5.2: 複数行段落分割対応（空行必須regression根本修正）。markdown-itが隣接行を1段落にまとめた場合もmup行単位で分割→空行なし膜記法が再び動作。
+ *   v8.23 2026.04.07(火) insertTemplateテンプレートの不要な空行を削除（v5.2で根本修正済みのためv0.9.18応急処置を撤回）。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -999,7 +1000,7 @@ joplin.plugins.register({
       label: 'Insert Membrane ▼▲',
       iconName: 'fas fa-caret-down',
       execute: async () => {
-        await insertTemplate('\n$▼m[CN=new]$ // comment [⊕0+0]\n\ncontent here\n\n$▲m[CN=new]$\n');
+        await insertTemplate('\n$▼m[CN=new]$ // comment [⊕0+0]\ncontent here\n$▲m[CN=new]$\n');
       },
     });
 
@@ -1008,7 +1009,7 @@ joplin.plugins.register({
       label: 'Insert Membrane ▶◀ (default fold)',
       iconName: 'fas fa-caret-right',
       execute: async () => {
-        await insertTemplate('\n$▶m[CN=new]$ // comment [⊕0+0]\n\ncontent here\n\n$◀m[CN=new]$\n');
+        await insertTemplate('\n$▶m[CN=new]$ // comment [⊕0+0]\ncontent here\n$◀m[CN=new]$\n');
       },
     });
 
