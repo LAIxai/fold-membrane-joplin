@@ -1,7 +1,7 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 5.2
+ * @version 5.3
  * @date    2026.04.07(火)
  * @desc    v2.x-v3.x: 全行自前処理方式（renderMarkMup）。罫線・空行に副作用あり。
  *          v4.0: 全面リアーキテクチャ。膜行・栞行のみプレースホルダーに置換→
@@ -15,6 +15,8 @@
  *          v5.2: 複数行段落の分割対応。v5.0で「空行必須」になったregression修正。
  *                markdown-itが空行なし隣接行を1段落にまとめる場合でも、
  *                mup行単位で分割してhtml_blockに変換。空行なしの膜記法が再び動作。
+ *          v5.3: カーソル形状改善。mup-hd-lblを導入しグレー背景をテキスト幅のみに縮小。
+ *                .mup-icoのみcursor:pointer。CN名・コメントはcursor:text;user-select:text。
  * @author  俊克 + Claude (Anthropic)
  * @desc    markMup膜記法をJoplinのMarkdown-itでHTMLレンダリングする
  */
@@ -129,21 +131,25 @@ function buildMupHtmlMap(blocks, lines){
       var hfs=lv<=1?'1.5em':lv===2?'1.25em':'1.1em';
       openHtml='<div class="mup" data-mup-sym="'+escH(isV?'v':'h')+'" data-mup-pfx="'+escH(b.pfx)+'" data-mup-cn="'+escH(cn)+'"'
         +(isLocked?' data-mup-locked="true"':'')+' style="border-left:4px solid '+col+';margin:8px 0">'
-        +'<div class="mup-hd" style="padding:4px 10px;cursor:'+(isLocked?'default':'pointer')+'">'
-        +'<span class="mup-ico" style="color:'+col+';font-size:0.75em">'+ico+'</span>'
-        +' <span class="mup-pfx-'+escH(b.pfx)+'" style="font-size:'+hfs+';font-weight:bold;display:inline;margin:0">'+escH(cn)+'</span>'
-        +(comment?' <em style="color:#555"> // '+comment+'</em>':'')
+        +'<div class="mup-hd" style="padding:4px 10px;">'
+        +'<span class="mup-hd-lbl" style="display:inline-flex;align-items:center;gap:2px;user-select:none;">'
+        +'<span class="mup-ico" style="color:'+col+';font-size:0.75em;cursor:'+(isLocked?'default':'pointer')+'">'+ico+'</span>'
+        +'<span class="mup-pfx-'+escH(b.pfx)+'" style="font-size:'+hfs+';font-weight:bold;margin:0;cursor:text;user-select:text"> '+escH(cn)+'</span>'
+        +(comment?' <em style="color:#555;cursor:text;user-select:text"> // '+comment+'</em>':'')
         +statusHtml
+        +'</span>'
         +'</div>'
         +'<div class="mup-bd" style="padding:2px 10px;'+bodyDisplay+'">';
     } else {
       openHtml='<div class="mup" data-mup-sym="'+escH(isV?'v':'h')+'" data-mup-pfx="'+escH(b.pfx)+'" data-mup-cn="'+escH(cn)+'"'
         +(isLocked?' data-mup-locked="true"':'')+' style="border-left:3px solid '+col+';margin:4px 0">'
-        +'<div class="mup-hd" style="padding:3px 8px;background:#f8f8f8;font-size:0.85em;cursor:'+(isLocked?'default':'pointer')+';user-select:none">'
-        +'<span class="mup-ico" style="color:'+col+'">'+ico+'</span>'
-        +' <span style="font-family:monospace;color:#888">'+escH(cn)+'</span>'
-        +(comment?' <em style="color:#555"> // '+comment+'</em>':'')
+        +'<div class="mup-hd" style="padding:3px 8px;font-size:0.85em;">'
+        +'<span class="mup-hd-lbl" style="display:inline-flex;align-items:center;gap:2px;background:#f8f8f8;padding:1px 6px;border-radius:3px;user-select:none;">'
+        +'<span class="mup-ico" style="color:'+col+';cursor:'+(isLocked?'default':'pointer')+'">'+ico+'</span>'
+        +'<span style="font-family:monospace;color:#888;cursor:text;user-select:text"> '+escH(cn)+'</span>'
+        +(comment?' <em style="color:#555;cursor:text;user-select:text"> // '+comment+'</em>':'')
         +statusHtml
+        +'</span>'
         +'</div>'
         +'<div class="mup-bd" style="padding:4px 8px;'+bodyDisplay+'">';
     }
