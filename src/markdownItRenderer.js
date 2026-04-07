@@ -1,7 +1,7 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 5.4
+ * @version 5.5
  * @date    2026.04.07(火)
  * @desc    v2.x-v3.x: 全行自前処理方式（renderMarkMup）。罫線・空行に副作用あり。
  *          v4.0: 全面リアーキテクチャ。膜行・栞行のみプレースホルダーに置換→
@@ -18,6 +18,7 @@
  *          v5.3: カーソル形状改善。mup-hd-lblを導入しグレー背景をテキスト幅のみに縮小。
  *                .mup-icoのみcursor:pointer。CN名・コメントはcursor:text;user-select:text。
  *          v5.4: アイコンをcursor:default（矢印）に変更。閉じ膜mup-ftも inline-flex化。
+ *          v5.5: 栞ボタンもcursor:default（矢印）に変更。
  * @author  俊克 + Claude (Anthropic)
  * @desc    markMup膜記法をJoplinのMarkdown-itでHTMLレンダリングする
  */
@@ -238,7 +239,7 @@ module.exports = {
                 +' data-mup="bookmark" data-mup-label="'+bmlabel+'"'
                 +' style="display:inline-flex;align-items:center;gap:6px;'
                 +'padding:3px 12px;background:#fff8e1;border:1px solid #ffcc02;'
-                +'border-radius:16px;cursor:pointer;font-size:0.85em;'
+                +'border-radius:16px;cursor:default;font-size:0.85em;'
                 +'user-select:none;margin:4px 0;color:#5c4a00">'
                 +'🔖 '+bmlabel+'</div>';
             }
