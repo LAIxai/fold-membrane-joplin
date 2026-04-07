@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.21
+ * @version 8.22
  * @date    2026.04.07(火)
  * @author  俊克 + Claude (Anthropic)
  * @desc
@@ -167,7 +167,8 @@
  *   v8.18 2026.03.31(火) markdownItRenderer.js v3.2: CN=RENDERER.HTML.LOOP.HR拡張: * * * / --- / ___ をMarkdown HR記法として<hr>に変換（WYSIWYG→MD→WYSIWYG往復で罫線がテキスト化するバグ修正）
  *   v8.19 2026.04.01(水) markdownItRenderer.js v3.3: 罫線増殖バグ修正（空行スペーサー<p style="height:0.8em">削除→TinyMCEが<hr>変換する根本原因除去; <hr style="margin:0.5em 0">でCSS視覚余白確保）
  *   v8.20 2026.04.01(水) markdownItRenderer.js v4.0: 全面リアーキテクチャ。膜行・栞行のみプレースホルダーに置換→markdown-itにネイティブ処理を委譲。renderMarkMup（全行自前処理）廃止。罫線・空行・太字等はJoplin標準処理で完全解決。
- *   v8.21 2026.04.07(火) ①栞単独ノートボタン非表示バグ修正: markdownItRenderer.js v5.1（🔖m[を早期検出条件に追加）。②閉じ膜・中身非表示バグ修正: insertTemplateのテンプレートに空行追加（v5.0 tokens方式では空行なし隣接行が1paragraphに統合され閉じ膜tokenが消えるため）。
+ *   v8.21 2026.04.07(火) ①栞単独ノートボタン非表示バグ修正: markdownItRenderer.js v5.1（🔖m[を早期検出条件に追加）。②閉じ膜・中身非表示バグ修正(応急処置): insertTemplateのテンプレートに空行追加。
+ *   v8.22 2026.04.07(火) markdownItRenderer.js v5.2: 複数行段落分割対応（空行必須regression根本修正）。markdown-itが隣接行を1段落にまとめた場合もmup行単位で分割→空行なし膜記法が再び動作。
  * \▲[CN=5831_FILE_HEADER]
  */
 

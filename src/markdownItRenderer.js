@@ -1,7 +1,7 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 5.1
+ * @version 5.2
  * @date    2026.04.07(火)
  * @desc    v2.x-v3.x: 全行自前処理方式（renderMarkMup）。罫線・空行に副作用あり。
  *          v4.0: 全面リアーキテクチャ。膜行・栞行のみプレースホルダーに置換→
@@ -12,6 +12,9 @@
  *                膜行・栞行トークン（paragraph_open+inline+paragraph_close）を
  *                html_blockトークンに直接差し替え。キー入力遅延を根本解消。
  *          v5.1: 膜ノート早期検出に🔖m[を追加（栞単独ノートでボタン非表示バグ修正）。
+ *          v5.2: 複数行段落の分割対応。v5.0で「空行必須」になったregression修正。
+ *                markdown-itが空行なし隣接行を1段落にまとめる場合でも、
+ *                mup行単位で分割してhtml_blockに変換。空行なしの膜記法が再び動作。
  * @author  俊克 + Claude (Anthropic)
  * @desc    markMup膜記法をJoplinのMarkdown-itでHTMLレンダリングする
  */
@@ -233,17 +236,70 @@ module.exports = {
           });
 
           // state.tokensを逆順スキャン: 膜行・栞行の paragraph_open+inline+paragraph_close を
-          // html_block 1トークンに差し替え（逆順なのでsplice後も前方のインデックスが不変）
+          // html_block に差し替え。v5.2: 複数行段落もmup行で分割して対応（空行不要）。
           var tokens=state.tokens;
           for(var i=tokens.length-3;i>=0;i--){
-            if(tokens[i].type==='paragraph_open'&&tokens[i].map){
-              var lineNum=tokens[i].map[0];
-              if(mupLineHtml[lineNum]!==undefined){
-                var htmlToken=new state.Token('html_block','',0);
-                htmlToken.content=mupLineHtml[lineNum];
-                htmlToken.map=tokens[i].map;
-                tokens.splice(i,3,htmlToken);
+            if(tokens[i].type!=='paragraph_open'||!tokens[i].map) continue;
+            var lineStart=tokens[i].map[0];
+            var lineEnd=tokens[i].map[1]; // exclusive
+
+            // この段落範囲内にmup行があるか確認
+            var hasMup=false;
+            for(var ln=lineStart;ln<lineEnd;ln++){if(mupLineHtml[ln]!==undefined){hasMup=true;break;}}
+            if(!hasMup) continue;
+
+            if(lineEnd-lineStart===1){
+              // 単行段落（最も一般的なケース・高速パス）
+              var ht=new state.Token('html_block','',0);
+              ht.content=mupLineHtml[lineStart];
+              ht.map=[lineStart,lineEnd];
+              tokens.splice(i,3,ht);
+            } else {
+              // 複数行段落（空行なし隣接行）: mup行で段落を分割
+              // markdown-itが隣接行を1段落にまとめるため、mup行単位でhtml_blockに切り出す
+              var inlineTok=tokens[i+1];
+              var contentLines=(inlineTok&&inlineTok.content?inlineTok.content:'').split('\n');
+              var newToks=[];
+              var textBuf=[];
+              var textLineStart2=lineStart;
+              for(var li=0;li<lineEnd-lineStart;li++){
+                var absLine=lineStart+li;
+                if(mupLineHtml[absLine]!==undefined){
+                  // テキストバッファをflush（非空の場合のみ）
+                  if(textBuf.length>0&&textBuf.join('').replace(/\s/g,'')!==''){
+                    var poNew=new state.Token('paragraph_open','p',1);
+                    poNew.map=[textLineStart2,absLine];
+                    var inlNew=new state.Token('inline','',0);
+                    inlNew.content=textBuf.join('\n');
+                    inlNew.children=[];
+                    state.md.inline.parse(inlNew.content,state.md,state.env,inlNew.children);
+                    var pcNew=new state.Token('paragraph_close','p',-1);
+                    newToks.push(poNew,inlNew,pcNew);
+                    textBuf=[];
+                  }
+                  // mup行をhtml_blockとして追加
+                  var htSplit=new state.Token('html_block','',0);
+                  htSplit.content=mupLineHtml[absLine];
+                  htSplit.map=[absLine,absLine+1];
+                  newToks.push(htSplit);
+                  textLineStart2=absLine+1;
+                } else {
+                  textBuf.push(contentLines[li]||'');
+                }
               }
+              // 残りテキストをflush
+              if(textBuf.length>0&&textBuf.join('').replace(/\s/g,'')!==''){
+                var poRem=new state.Token('paragraph_open','p',1);
+                poRem.map=[textLineStart2,lineEnd];
+                var inlRem=new state.Token('inline','',0);
+                inlRem.content=textBuf.join('\n');
+                inlRem.children=[];
+                state.md.inline.parse(inlRem.content,state.md,state.env,inlRem.children);
+                var pcRem=new state.Token('paragraph_close','p',-1);
+                newToks.push(poRem,inlRem,pcRem);
+              }
+              // splice（spread演算子の代わりにapplyで安全に）
+              Array.prototype.splice.apply(tokens,[i,3].concat(newToks));
             }
           }
           return true;
