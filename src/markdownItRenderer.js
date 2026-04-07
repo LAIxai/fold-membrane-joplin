@@ -1,8 +1,8 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 5.0
- * @date    2026.04.06(月)
+ * @version 5.1
+ * @date    2026.04.07(火)
  * @desc    v2.x-v3.x: 全行自前処理方式（renderMarkMup）。罫線・空行に副作用あり。
  *          v4.0: 全面リアーキテクチャ。膜行・栞行のみプレースホルダーに置換→
  *                markdown-itにネイティブ処理を委譲。罫線・空行・太字・リンク等は
@@ -11,6 +11,7 @@
  *          v5.0: state.tokens直接操作方式。markdownIt.render()の二重呼び出し排除。
  *                膜行・栞行トークン（paragraph_open+inline+paragraph_close）を
  *                html_blockトークンに直接差し替え。キー入力遅延を根本解消。
+ *          v5.1: 膜ノート早期検出に🔖m[を追加（栞単独ノートでボタン非表示バグ修正）。
  * @author  俊克 + Claude (Anthropic)
  * @desc    markMup膜記法をJoplinのMarkdown-itでHTMLレンダリングする
  */
@@ -177,8 +178,8 @@ module.exports = {
         markdownIt.core.ruler.push('markMup',function(state){
           var src=state.src;
 
-          // 膜ノート検出: ▼m[ の3文字（正式）または旧記法
-          if(src.indexOf('▼m[')<0 && src.indexOf('▶m[')<0 &&
+          // 膜ノート検出: ▼m[ / ▶m[ / 🔖m[ の3文字（正式）または旧記法
+          if(src.indexOf('▼m[')<0 && src.indexOf('▶m[')<0 && src.indexOf('🔖m[')<0 &&
              !/[▼▶▲◀]_[Mm🄼]\[|[Mm🄼][▼▶▲◀]\[|🔖_[Mm🄼]\[|[Mm🄼]🔖\[/.test(src)) return false;
 
           // \▼[CN=RENDERER.JOPLIN.MARKMUP.PREP] // 前処理・パース（キャッシュ付き）
