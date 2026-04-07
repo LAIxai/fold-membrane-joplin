@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.23
+ * @version 8.24
  * @date    2026.04.07(火)
  * @author  俊克 + Claude (Anthropic)
  * @desc
@@ -170,6 +170,7 @@
  *   v8.21 2026.04.07(火) ①栞単独ノートボタン非表示バグ修正: markdownItRenderer.js v5.1（🔖m[を早期検出条件に追加）。②閉じ膜・中身非表示バグ修正(応急処置): insertTemplateのテンプレートに空行追加。
  *   v8.22 2026.04.07(火) markdownItRenderer.js v5.2: 複数行段落分割対応（空行必須regression根本修正）。markdown-itが隣接行を1段落にまとめた場合もmup行単位で分割→空行なし膜記法が再び動作。
  *   v8.23 2026.04.07(火) insertTemplateテンプレートの不要な空行を削除（v5.2で根本修正済みのためv0.9.18応急処置を撤回）。
+ *   v8.24 2026.04.07(火) CN=3819修正: TinyMCEが改行なしで* * *を連結した場合の対応（改行なし版正規表現を追加）。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -535,6 +536,9 @@ function repairMupSpan(body: string): string {
   // TinyMCEのシリアライズで前後の空行が消えるため、毎回補完する。
   fixed = fixed.replace(/^<hr>$/gm, '* * *');       // <hr>テキスト → * * * に正規化
   fixed = fixed.replace(/^&lt;hr&gt;$/gm, '* * *'); // HTML実体 → * * *
+  // TinyMCEが</div>* * *<div>のように改行なしで連結した場合に改行を補完
+  fixed = fixed.replace(/([^\n])(\* \* \*)/g, '$1\n$2');       // * * * の直前に改行挿入
+  fixed = fixed.replace(/(\* \* \*)([^\n])/g, '$1\n$2');       // * * * の直後に改行挿入
   fixed = fixed.replace(/([^\n])\n(\* \* \*)/g, '$1\n\n$2');  // * * * の前に空行を保証
   fixed = fixed.replace(/(\* \* \*)\n([^\n])/g, '$1\n\n$2');  // * * * の後に空行を保証
   // \▲[CN=3819_repairMupSpan.HR]
