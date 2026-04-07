@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.26
+ * @version 8.27
  * @date    2026.04.07(火)
  * @author  俊克 + Claude (Anthropic)
  * @desc
@@ -173,6 +173,7 @@
  *   v8.24 2026.04.07(火) CN=3819修正: TinyMCEが改行なしで* * *を連結した場合の対応（改行なし版正規表現を追加）。
  *   v8.25 2026.04.07(火) mupEditor.js v2.0対応: 膜名前自動同期機能追加（開始膜↔閉じ膜CN名リアルタイム同期）。
  *   v8.26 2026.04.08(水) markdownItRenderer.js v5.3対応: mup-hd-lbl導入によるカーソル形状改善。
+ *   v8.27 2026.04.08(水) markdownItRenderer.js v5.4: アイコンcursor:default、閉じ膜inline-flex化。
  * \▲[CN=5831_FILE_HEADER]
  */
 

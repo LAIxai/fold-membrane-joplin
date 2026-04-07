@@ -1,7 +1,7 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 5.3
+ * @version 5.4
  * @date    2026.04.07(火)
  * @desc    v2.x-v3.x: 全行自前処理方式（renderMarkMup）。罫線・空行に副作用あり。
  *          v4.0: 全面リアーキテクチャ。膜行・栞行のみプレースホルダーに置換→
@@ -17,6 +17,7 @@
  *                mup行単位で分割してhtml_blockに変換。空行なしの膜記法が再び動作。
  *          v5.3: カーソル形状改善。mup-hd-lblを導入しグレー背景をテキスト幅のみに縮小。
  *                .mup-icoのみcursor:pointer。CN名・コメントはcursor:text;user-select:text。
+ *          v5.4: アイコンをcursor:default（矢印）に変更。閉じ膜mup-ftも inline-flex化。
  * @author  俊克 + Claude (Anthropic)
  * @desc    markMup膜記法をJoplinのMarkdown-itでHTMLレンダリングする
  */
@@ -133,7 +134,7 @@ function buildMupHtmlMap(blocks, lines){
         +(isLocked?' data-mup-locked="true"':'')+' style="border-left:4px solid '+col+';margin:8px 0">'
         +'<div class="mup-hd" style="padding:4px 10px;">'
         +'<span class="mup-hd-lbl" style="display:inline-flex;align-items:center;gap:2px;user-select:none;">'
-        +'<span class="mup-ico" style="color:'+col+';font-size:0.75em;cursor:'+(isLocked?'default':'pointer')+'">'+ico+'</span>'
+        +'<span class="mup-ico" style="color:'+col+';font-size:0.75em;cursor:default">'+ico+'</span>'
         +'<span class="mup-pfx-'+escH(b.pfx)+'" style="font-size:'+hfs+';font-weight:bold;margin:0;cursor:text;user-select:text"> '+escH(cn)+'</span>'
         +(comment?' <em style="color:#555;cursor:text;user-select:text"> // '+comment+'</em>':'')
         +statusHtml
@@ -145,7 +146,7 @@ function buildMupHtmlMap(blocks, lines){
         +(isLocked?' data-mup-locked="true"':'')+' style="border-left:3px solid '+col+';margin:4px 0">'
         +'<div class="mup-hd" style="padding:3px 8px;font-size:0.85em;">'
         +'<span class="mup-hd-lbl" style="display:inline-flex;align-items:center;gap:2px;background:#f8f8f8;padding:1px 6px;border-radius:3px;user-select:none;">'
-        +'<span class="mup-ico" style="color:'+col+';cursor:'+(isLocked?'default':'pointer')+'">'+ico+'</span>'
+        +'<span class="mup-ico" style="color:'+col+';cursor:default">'+ico+'</span>'
         +'<span style="font-family:monospace;color:#888;cursor:text;user-select:text"> '+escH(cn)+'</span>'
         +(comment?' <em style="color:#555;cursor:text;user-select:text"> // '+comment+'</em>':'')
         +statusHtml
@@ -160,9 +161,11 @@ function buildMupHtmlMap(blocks, lines){
     if(b.endLine>=0){
       var cm2=RE_C.exec(lines[b.endLine]);
       var csym=cm2?(cm2[1]||cm2[2]||cm2[3]):'▲';
-      map[b.endLine]='<div class="mup-ft" style="padding:2px 8px;background:#f8f8f8;font-size:0.8em;cursor:default;user-select:none;color:'+col+';opacity:0.7">'
-        +'<span class="mup-ico">'+csym+'</span>'
-        +' <span class="mup-pfx-'+escH(b.pfx)+'" style="font-family:monospace;color:#aaa">'+escH(cn)+'</span>'
+      map[b.endLine]='<div class="mup-ft" style="padding:2px 8px;font-size:0.8em;color:'+col+';opacity:0.7">'
+        +'<span style="display:inline-flex;align-items:center;gap:2px;background:#f8f8f8;padding:1px 6px;border-radius:3px;user-select:none;">'
+        +'<span class="mup-ico" style="cursor:default">'+csym+'</span>'
+        +'<span class="mup-pfx-'+escH(b.pfx)+'" style="font-family:monospace;color:#aaa;cursor:text;user-select:text"> '+escH(cn)+'</span>'
+        +'</span>'
         +'</div>'
         +'</div>'  // mup-bd
         +'</div>'; // mup
