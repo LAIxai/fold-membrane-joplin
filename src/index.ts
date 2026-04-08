@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.29
- * @date    2026.04.07(火)
+ * @version 8.30
+ * @date    2026.04.08(水)
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -450,31 +450,50 @@ function repairMupSpan(body: string): string {
   // \▼[CN=6291_repairMupSpan.NAME_SYNC] // WYSIWYG編集後の開閉膜名不一致修正
   // WYSIWYGモードではmupEditor.js（CM6プラグイン）が動作しないため、
   // 開始膜の名前を変更しても閉じ膜が連動しない。
-  // SPAN2MUP変換後にスタック方式でペアを検出し、開始膜名を正として閉じ膜を更新する。
+  // 孤立膜方式（v2.1）: 完全一致(pfx+cn)するペアを消費し、残った孤立開始膜と
+  // 孤立閉じ膜を順番にマッチさせて名前を同期する。
+  // これにより同名入れ子膜（例: new1内にnew1）で内側膜が誤更新される旧バグを修正。
   {
     const RE_NS_O = /^[ \t]*\$?(?:▼|▶)m\[(CN|H[1-3])=([^\]]+)\]\$?/;
     const RE_NS_C = /^[ \t]*\$?(?:▲|◀)m\[(CN|H[1-3])=([^\]]+)\]\$?/;
     const nsLines = fixed.split('\n');
-    const nsStack: Array<{pfx: string; cn: string}> = [];
+    // すべての開始膜・閉じ膜を行番号付きで収集
+    type NsEntry = {lineIdx: number; pfx: string; cn: string; consumed: boolean};
+    const openStack: NsEntry[] = [];
+    const closeList: NsEntry[] = [];
     for (let i = 0; i < nsLines.length; i++) {
       const om = RE_NS_O.exec(nsLines[i]);
       const cm = RE_NS_C.exec(nsLines[i]);
-      if (om) {
-        nsStack.push({pfx: om[1], cn: om[2].trim()});
-      } else if (cm) {
-        const cPfx = cm[1], cCn = cm[2].trim();
-        for (let k = nsStack.length - 1; k >= 0; k--) {
-          if (nsStack[k].pfx === cPfx) {
-            if (nsStack[k].cn !== cCn) {
-              // 開始膜名を正として閉じ膜の[pfx=name]部分を更新
-              const oldBracket = '[' + cPfx + '=' + cCn + ']';
-              const newBracket = '[' + nsStack[k].pfx + '=' + nsStack[k].cn + ']';
-              nsLines[i] = nsLines[i].replace(oldBracket, () => newBracket);
-            }
-            nsStack.splice(k, 1);
-            break;
-          }
+      if (om) openStack.push({lineIdx: i, pfx: om[1], cn: om[2].trim(), consumed: false});
+      else if (cm) closeList.push({lineIdx: i, pfx: cm[1], cn: cm[2].trim(), consumed: false});
+    }
+    // 完全一致(pfx+cn)するペアを消費（逆順スタックで正しいネスト順に処理）
+    for (const cl of closeList) {
+      for (let k = openStack.length - 1; k >= 0; k--) {
+        const op = openStack[k];
+        if (!op.consumed && op.pfx === cl.pfx && op.cn === cl.cn && op.lineIdx < cl.lineIdx) {
+          op.consumed = true;
+          cl.consumed = true;
+          break;
         }
+      }
+    }
+    // 孤立開始膜と孤立閉じ膜を抽出してペアリング（ドキュメント順）
+    const orphanOpenings = openStack.filter(o => !o.consumed);
+    const orphanClosings = closeList.filter(c => !c.consumed);
+    const usedCloseIdx = new Set<number>();
+    for (const op of orphanOpenings) {
+      for (const cl of orphanClosings) {
+        if (usedCloseIdx.has(cl.lineIdx)) continue;
+        if (cl.pfx !== op.pfx || cl.lineIdx <= op.lineIdx) continue;
+        usedCloseIdx.add(cl.lineIdx);
+        // 開始膜名を正として閉じ膜を更新
+        if (op.cn !== cl.cn) {
+          const oldBracket = '[' + cl.pfx + '=' + cl.cn + ']';
+          const newBracket = '[' + op.pfx + '=' + op.cn + ']';
+          nsLines[cl.lineIdx] = nsLines[cl.lineIdx].replace(oldBracket, () => newBracket);
+        }
+        break;
       }
     }
     fixed = nsLines.join('\n');

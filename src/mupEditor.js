@@ -1,13 +1,14 @@
 // \▼[CN=EDITOR] // CodeMirrorプラグイン - エディタ同期 v2.0
 /**
  * @file    mupEditor.js
- * @version 2.0
- * @date    2026.04.07(火)
+ * @version 2.1
+ * @date    2026.04.08(水)
  * @desc    v1.2: mupUpdateBadgeにpfx第5引数追加（H1=/H2=/H3=対応）
  *          v1.3: mupCheckModeInsert追加（insertTemplate専用、競合解消）
  *          v2.0: 膜名前自動同期機能追加（開始膜↔閉じ膜のCN名をリアルタイム同期）
  *               addExtension + EditorView.updateListenerで実装。
  *               mupUpdateBadge正規表現を$▼m[CN=...]$形式に修正（旧\▼[形式バグ修正）。
+ *          v2.1: _syncDispatch深さカウンター方式に変更（同名入れ子膜で内側膜を誤更新するバグ修正）。
  * @author  俊克 + Claude (Anthropic)
  */
 'use strict';
@@ -90,23 +91,40 @@ module.exports = {
         var _syncGuard = false;
 
         // \▼[CN=EDITOR.NAME_SYNC.DISPATCH] // 対になる膜のCN名を書き換えて dispatch
+        // v2.1: 深さカウンター方式で同名入れ子膜を正しくブラケットマッチングする
+        // forward=true: 開始膜変更→閉じ膜を前方検索。同名開始膜でdepth++、閉じ膜でdepth--。depth=0が真の対応膜。
+        // forward=false: 閉じ膜変更→開始膜を後方検索。同名閉じ膜でdepth++、開始膜でdepth--。depth=0が真の対応膜。
         function _syncDispatch(view, doc, targetRE, oldPfx, oldCn, newPfx, newCn, fromLine, forward) {
           var oldPart = '[' + oldPfx + '=' + oldCn + ']';
           var newPart = '[' + newPfx + '=' + newCn + ']';
           var start = forward ? fromLine + 1 : fromLine - 1;
           var stop  = forward ? doc.lines + 1 : 0;
           var step  = forward ? 1 : -1;
+          // 入れ子深さカウンター（同名同pfx膜のネスト追跡）
+          var depth = 0;
+          // 前方検索時は入れ子の開始膜(OPEN)をカウント、後方検索時は入れ子の閉じ膜(CLOSE)をカウント
+          var depthRE = forward ? RE_SYNC_OPEN : RE_SYNC_CLOSE;
           for (var i = start; forward ? (i < stop) : (i > stop); i += step) {
             var line = doc.line(i);
-            var m = targetRE.exec(line.text);
-            if (!m || m[2] !== oldPfx || m[3].trim() !== oldCn) continue;
-            var updated = line.text.replace(oldPart, newPart);
-            if (updated !== line.text) {
-              _syncGuard = true;
-              view.dispatch({ changes: [{ from: line.from, to: line.to, insert: updated }] });
-              _syncGuard = false;
+            var mt = targetRE.exec(line.text);
+            var md = depthRE.exec(line.text);
+            if (md && md[2] === oldPfx && md[3].trim() === oldCn) {
+              // 同名同pfxの入れ子膜 → 深さ増加
+              depth++;
+            } else if (mt && mt[2] === oldPfx && mt[3].trim() === oldCn) {
+              if (depth > 0) {
+                depth--; // 入れ子内の対応膜 → スキップ
+              } else {
+                // depth === 0: 真の対応膜
+                var updated = line.text.replace(oldPart, newPart);
+                if (updated !== line.text) {
+                  _syncGuard = true;
+                  view.dispatch({ changes: [{ from: line.from, to: line.to, insert: updated }] });
+                  _syncGuard = false;
+                }
+                return;
+              }
             }
-            return; // 最初に見つかった対を1つだけ更新
           }
         }
         // \▲[CN=EDITOR.NAME_SYNC.DISPATCH]
