@@ -1063,7 +1063,7 @@ joplin.plugins.register({
       label: 'Insert Membrane ▼▲',
       iconName: 'fas fa-caret-down',
       execute: async () => {
-        await insertTemplate('\n$▼m[CN=new]$ // comment [⊕0+0]\ncontent here\n$▲m[CN=new]$\n');
+        await insertTemplate('\n$▼m[CN=new]$ // comment [⊕0+0]\n\n$▲m[CN=new]$\n');
       },
     });
 
@@ -1072,7 +1072,7 @@ joplin.plugins.register({
       label: 'Insert Membrane ▶◀ (default fold)',
       iconName: 'fas fa-caret-right',
       execute: async () => {
-        await insertTemplate('\n$▶m[CN=new]$ // comment [⊕0+0]\ncontent here\n$◀m[CN=new]$\n');
+        await insertTemplate('\n$▶m[CN=new]$ // comment [⊕0+0]\n\n$◀m[CN=new]$\n');
       },
     });
 
