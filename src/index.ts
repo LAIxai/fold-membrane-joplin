@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.28
+ * @version 8.29
  * @date    2026.04.07(火)
  * @author  俊克 + Claude (Anthropic)
  * @desc
@@ -175,6 +175,7 @@
  *   v8.26 2026.04.08(水) markdownItRenderer.js v5.3対応: mup-hd-lbl導入によるカーソル形状改善。
  *   v8.27 2026.04.08(水) markdownItRenderer.js v5.4: アイコンcursor:default、閉じ膜inline-flex化。
  *   v8.28 2026.04.08(水) markdownItRenderer.js v5.5: 栞ボタンもcursor:default（矢印）に変更。
+ *   v8.29 2026.04.08(水) CN=6291 NAME_SYNC追加: WYSIWYG編集後の開閉膜名不一致をrepairMupSpan内で自動修正。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -185,6 +186,7 @@
 //   \▼[CN=5849_repairMupSpan.DOLLARBLOCK] // $$膜ラッパー除去（TinyMCE保護）
 //   \▼[CN=2615_repairMupSpan.TAG_JOIN] // タグ間の改行を除去
 //   \▼[CN=7384_repairMupSpan.SPAN2MUP] // span形式→markMup記法に変換
+//   \▼[CN=6291_repairMupSpan.NAME_SYNC] // WYSIWYG編集後の開閉膜名不一致修正
 //   \▼[CN=1920_repairMupSpan.BACKSLASH] // バックスラッシュ増殖修復
 //   \▼[CN=6537_repairMupSpan.NBSP] // &nbsp;無限増殖修復
 //   \▼[CN=3819_repairMupSpan.HR] // * * * → --- 復元
@@ -444,6 +446,40 @@ function repairMupSpan(body: string): string {
   // CN=7384(SPAN2MUP)のregexがcommentをキャプチャし損ねた場合に膜の行末に残る
   fixed = fixed.replace(/(M[▼▶]\[[^\]\n]+\])[ \t]+\*[ \t]*(\/\/[^*\n]*?)[ \t]*\*/g, '$1 $2');
   // \▲[CN=4481_repairMupSpan.ITALIC_COMMENT]
+
+  // \▼[CN=6291_repairMupSpan.NAME_SYNC] // WYSIWYG編集後の開閉膜名不一致修正
+  // WYSIWYGモードではmupEditor.js（CM6プラグイン）が動作しないため、
+  // 開始膜の名前を変更しても閉じ膜が連動しない。
+  // SPAN2MUP変換後にスタック方式でペアを検出し、開始膜名を正として閉じ膜を更新する。
+  {
+    const RE_NS_O = /^[ \t]*\$?(?:▼|▶)m\[(CN|H[1-3])=([^\]]+)\]\$?/;
+    const RE_NS_C = /^[ \t]*\$?(?:▲|◀)m\[(CN|H[1-3])=([^\]]+)\]\$?/;
+    const nsLines = fixed.split('\n');
+    const nsStack: Array<{pfx: string; cn: string}> = [];
+    for (let i = 0; i < nsLines.length; i++) {
+      const om = RE_NS_O.exec(nsLines[i]);
+      const cm = RE_NS_C.exec(nsLines[i]);
+      if (om) {
+        nsStack.push({pfx: om[1], cn: om[2].trim()});
+      } else if (cm) {
+        const cPfx = cm[1], cCn = cm[2].trim();
+        for (let k = nsStack.length - 1; k >= 0; k--) {
+          if (nsStack[k].pfx === cPfx) {
+            if (nsStack[k].cn !== cCn) {
+              // 開始膜名を正として閉じ膜の[pfx=name]部分を更新
+              const oldBracket = '[' + cPfx + '=' + cCn + ']';
+              const newBracket = '[' + nsStack[k].pfx + '=' + nsStack[k].cn + ']';
+              nsLines[i] = nsLines[i].replace(oldBracket, () => newBracket);
+            }
+            nsStack.splice(k, 1);
+            break;
+          }
+        }
+      }
+    }
+    fixed = nsLines.join('\n');
+  }
+  // \▲[CN=6291_repairMupSpan.NAME_SYNC]
 
   // \▼[CN=4729_repairMupSpan.AUTO_CN] // CN番号自動付加（4桁プレフィックスなし → 現在時刻の分秒4桁を自動追加）
   // 同一CN値の開閉膜ペアには同じ番号を割り当てる（折畳み対応を壊さない）
