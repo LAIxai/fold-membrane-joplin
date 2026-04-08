@@ -1,8 +1,8 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 5.5
- * @date    2026.04.07(火)
+ * @version 5.6
+ * @date    2026.04.09(木)
  * @desc    v2.x-v3.x: 全行自前処理方式（renderMarkMup）。罫線・空行に副作用あり。
  *          v4.0: 全面リアーキテクチャ。膜行・栞行のみプレースホルダーに置換→
  *                markdown-itにネイティブ処理を委譲。罫線・空行・太字・リンク等は
@@ -19,6 +19,9 @@
  *                .mup-icoのみcursor:pointer。CN名・コメントはcursor:text;user-select:text。
  *          v5.4: アイコンをcursor:default（矢印）に変更。閉じ膜mup-ftも inline-flex化。
  *          v5.5: 栞ボタンもcursor:default（矢印）に変更。
+ *          v5.6: 折畳み全7状態インジケーター実装。
+ *                analyzeBodyState追加。中身×リンク種別(⇄/⇒)を自動検出し、
+ *                空膜=[🛒]、リンクのみ=⇄[🛒]/⇒[🛒]、中身+リンク=[⊖N] ⇄⇒ を表示。
  * @author  俊克 + Claude (Anthropic)
  * @desc    markMup膜記法をJoplinのMarkdown-itでHTMLレンダリングする
  */
@@ -32,6 +35,8 @@ var RE_C  = /^[ \t]*\$?(?:(▲|◀)m|(▲|◀)_[Mm🄼]|[Mm🄼](▲|◀))\[(CN|
 var RE_BM     = /^[ \t]*(?:\$?(?:🔖m|🔖_[Mm🄼]|[Mm🄼]🔖)\[([^\]]*)\]\$?|🔖 ([^\n$]+))/;
 var RE_BM_DIV = /<(?:div|span)[^>]*data-mup="bookmark"[^>]*data-mup-label="([^"]*)"[^>]*>/;
 var DEPTH_COLORS = ['#9b6fc4','#5588cc','#4aaa6a','#c8a040','#cc7744','#44aacc'];
+var RE_LINK_BIDIR = /⇄\s*\{/;   // 相互リンク記法 ⇄ {CN=...}
+var RE_LINK_ME    = /⇒Me⇒/;     // Me結合記法 {A} ⇒Me⇒ {B}
 // \▲[CN=RENDERER.CONST]
 
 // \▼[CN=RENDERER.UTIL] // ユーティリティ
@@ -90,6 +95,26 @@ function parseMembranes(lines){
 }
 // \▲[CN=RENDERER.PARSE]
 
+// \▼[CN=RENDERER.ANALYZE] // 膜本文の状態解析（空/⇄リンク/⇒Me結合/テキスト）
+// 各ブロックにhasText・hasBidir・hasMeLinkプロパティを付加する
+function analyzeBodyState(blocks, lines){
+  blocks.forEach(function(b){
+    var hasText=false, hasBidir=false, hasMeLink=false;
+    var end=b.endLine>=0 ? b.endLine : b.startLine+1;
+    for(var i=b.startLine+1; i<end; i++){
+      var line=lines[i];
+      var trimmed=line.trim();
+      if(!trimmed) continue;                          // 空行スキップ
+      if(RE_O.test(line)||RE_C.test(line)) continue; // 膜タグ行スキップ
+      if(RE_LINK_BIDIR.test(trimmed)){ hasBidir=true; continue; }
+      if(RE_LINK_ME.test(trimmed))   { hasMeLink=true; continue; }
+      hasText=true;
+    }
+    b.hasText=hasText; b.hasBidir=hasBidir; b.hasMeLink=hasMeLink;
+  });
+}
+// \▲[CN=RENDERER.ANALYZE]
+
 // \▼[CN=RENDERER.BUILD] // 膜HTML生成（行番号→HTMLマップ）
 function buildMupHtmlMap(blocks, lines){
   var map={};
@@ -125,6 +150,23 @@ function buildMupHtmlMap(blocks, lines){
         +escH(dispTxt)+'</code>';
     }
     // \▲[CN=RENDERER.BUILD.STATUS]
+
+    // \▼[CN=RENDERER.BUILD.INDICATOR] // 折畳み全7状態インジケーター（🛒/⇄/⇒）
+    // 中身なし=🛒、リンクあり=⇄⇒prefix、中身あり+リンク=バッジ後に追記
+    var linkPart=(b.hasBidir?'⇄':'')+(b.hasMeLink?'⇒':'');
+    if(!b.hasText){
+      // 状態①②③: 空膜 → [🛒] または ⇄[🛒] または ⇒[🛒]
+      var cartTxt=linkPart+'[🛒]';
+      statusHtml=' <code class="mup-status mup-status-cart"'
+        +' style="font-size:0.8em;font-family:monospace;color:#bbb;background:none;border:none;padding:0">'
+        +escH(cartTxt)+'</code>';
+    } else if(linkPart){
+      // 状態⑤⑥⑦: 中身あり+リンク → 既存バッジに ⇄ / ⇒ / ⇄⇒ を追記
+      statusHtml+=' <span class="mup-link-ico"'
+        +' style="font-size:0.85em;color:#aaa;font-family:monospace">'+escH(linkPart)+'</span>';
+    }
+    // 状態④: 中身あり・リンクなし → statusHtmlはそのまま（変更なし）
+    // \▲[CN=RENDERER.BUILD.INDICATOR]
 
     // \▼[CN=RENDERER.BUILD.OPEN] // 開始膜HTML
     var openHtml;
@@ -197,21 +239,34 @@ module.exports = {
 
           // \▼[CN=RENDERER.JOPLIN.MARKMUP.PREP] // 前処理・パース（キャッシュ付き）
           var rawLines=src.split('\n');
-          // 膜タグ行・栞行のみ「行番号:内容」で結合してキャッシュキーを作成
-          var mupKey=rawLines.map(function(l,i){
-            return (RE_O.test(l)||RE_C.test(l)||RE_BM.test(l)||RE_BM_DIV.test(l)) ? i+':'+l : null;
-          }).filter(Boolean).join('\n');
+          // 膜タグ行 + 本文状態(T/B/M)をキャッシュキーに含める
+          // → 空膜に中身を書いた瞬間に🛒→カウンター表示が正しく切り替わる
+          var mupMembraneParts=[], mupBodyParts=[];
+          rawLines.forEach(function(l,i){
+            if(RE_O.test(l)||RE_C.test(l)||RE_BM.test(l)||RE_BM_DIV.test(l)){
+              mupMembraneParts.push(i+':'+l);
+            } else {
+              var t=l.trim();
+              if(t){
+                if(RE_LINK_BIDIR.test(t))      mupBodyParts.push(i+':B');
+                else if(RE_LINK_ME.test(t))    mupBodyParts.push(i+':M');
+                else                            mupBodyParts.push(i+':T');
+              }
+            }
+          });
+          var mupKey=mupMembraneParts.join('\n')+'\n---\n'+mupBodyParts.join('\n');
 
           var blocks, htmlMap;
           if(mupKey===_mupCache.key && _mupCache.blocks.length>0){
-            // 膜タグ行が変わっていない → キャッシュ利用
+            // キャッシュ利用
             blocks=_mupCache.blocks;
             htmlMap=_mupCache.htmlMap;
           } else {
-            // 膜タグ行が変わった → 全処理してキャッシュ更新
+            // キャッシュ更新
             var srcFixed=fixDisplaySrc(src);
             var lines=srcFixed.split('\n');
             blocks=parseMembranes(lines);
+            analyzeBodyState(blocks,lines); // 全7状態の検出
             htmlMap=buildMupHtmlMap(blocks,lines);
             _mupCache.key=mupKey;
             _mupCache.blocks=blocks;
