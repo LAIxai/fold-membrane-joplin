@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.30
- * @date    2026.04.08(水)
+ * @version 8.31
+ * @date    2026.04.09(木)
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -368,6 +368,13 @@ function repairMupSpan(body: string): string {
   // \▼[CN=5492_repairMupSpan.BADGE_TICK] // バックティック囲みバッジを平文化
   // TinyMCEが<code class="mup-status">を`[⊕N+M]`にシリアライズした後の逆変換
   fixed = fixed.replace(/`(\[(?:⊕|⊖|⊘)[^\]]*\])`/g, '$1');
+  // 🛒インジケーター（空膜マーク）のバックティック包みを完全除去
+  // TinyMCEが<code class="mup-status-cart">を``化した残骸。ノート本文に保存不要なため削除。
+  // 例: `[🛒]` / `⇄[🛒]` / `⇒[🛒]` / `⇄⇒[🛒]`
+  fixed = fixed.replace(/`\s*[⇄⇒]*\[🛒\]\s*`/g, '');
+  // リンクアイコンのバックティック包みも除去（<span class="mup-link-ico">の残骸）
+  // 例: `⇄` / `⇒` / `⇄⇒`
+  fixed = fixed.replace(/`\s*([⇄⇒]+)\s*`/g, '');
   // \▲[CN=5492_repairMupSpan.BADGE_TICK]
 
   // \▼[CN=7384_repairMupSpan.SPAN2MUP] // span形式→markMup記法に変換
