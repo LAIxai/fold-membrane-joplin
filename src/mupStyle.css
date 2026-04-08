@@ -1,3 +1,15 @@
-/* Fold Membrane styles */
+/* Fold Membrane styles v1.2 */
 .mup-hd-lbl:hover { opacity: 0.8; }
 .mup-ico { font-size: 0.8em; vertical-align: middle; }
+
+/* 折畳み状態インジケーター（🛒 / ⇄ / ⇒）
+ * data-mup-state 属性 + CSS ::after で表示。
+ * TinyMCEはCSSコンテンツをシリアライズしないので本文汚染ゼロ。 */
+.mup-hd-lbl[data-mup-state]::after {
+  content: " " attr(data-mup-state);
+  font-size: 0.8em;
+  font-family: monospace;
+  color: #bbb;
+  user-select: none;
+  pointer-events: none;
+}

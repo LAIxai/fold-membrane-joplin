@@ -1,7 +1,7 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 5.7
+ * @version 5.8
  * @date    2026.04.09(木)
  * @desc    v2.x-v3.x: 全行自前処理方式（renderMarkMup）。罫線・空行に副作用あり。
  *          v4.0: 全面リアーキテクチャ。膜行・栞行のみプレースホルダーに置換→
@@ -24,6 +24,8 @@
  *                空膜=[🛒]、リンクのみ=⇄[🛒]/⇒[🛒]、中身+リンク=[⊖N] ⇄⇒ を表示。
  *          v5.7: RE_LINK_ME を /Me⇒|⇒Me/ に拡張。
  *                Me⇒{B}（自膜→先）・{A}⇒Me（他→自膜）も ⇒ アイコン表示対象に。
+ *          v5.8: 状態インジケーター（🛒/⇄/⇒）をDOM要素→data-mup-state属性+CSS::afterに変更。
+ *                TinyMCEがシリアライズしても本文汚染ゼロ。mupStyle.css v1.2対応。
  * @author  俊克 + Claude (Anthropic)
  * @desc    markMup膜記法をJoplinのMarkdown-itでHTMLレンダリングする
  */
@@ -154,20 +156,17 @@ function buildMupHtmlMap(blocks, lines){
     // \▲[CN=RENDERER.BUILD.STATUS]
 
     // \▼[CN=RENDERER.BUILD.INDICATOR] // 折畳み全7状態インジケーター（🛒/⇄/⇒）
-    // 中身なし=🛒、リンクあり=⇄⇒prefix、中身あり+リンク=バッジ後に追記
+    // data-mup-state 属性に状態値を持たせ CSS ::after で表示する。
+    // DOM要素を生成しないためTinyMCEがシリアライズしても本文に🛒/⇄/⇒が混入しない。
     var linkPart=(b.hasBidir?'⇄':'')+(b.hasMeLink?'⇒':'');
+    var mupStateVal='';
     if(!b.hasText){
-      // 状態①②③: 空膜 → [🛒] または ⇄[🛒] または ⇒[🛒]
-      var cartTxt=linkPart+'[🛒]';
-      statusHtml=' <code class="mup-status mup-status-cart"'
-        +' style="font-size:0.8em;font-family:monospace;color:#bbb;background:none;border:none;padding:0">'
-        +escH(cartTxt)+'</code>';
+      mupStateVal=linkPart+'[🛒]';   // 状態①②③: 空膜
     } else if(linkPart){
-      // 状態⑤⑥⑦: 中身あり+リンク → 既存バッジに ⇄ / ⇒ / ⇄⇒ を追記
-      statusHtml+=' <span class="mup-link-ico"'
-        +' style="font-size:0.85em;color:#aaa;font-family:monospace">'+escH(linkPart)+'</span>';
+      mupStateVal=linkPart;           // 状態⑤⑥⑦: 中身あり+リンク
     }
-    // 状態④: 中身あり・リンクなし → statusHtmlはそのまま（変更なし）
+    // 状態④: 中身あり・リンクなし → mupStateVal=''（属性なし）
+    var mupStateAttr=mupStateVal?' data-mup-state="'+escH(mupStateVal)+'"':'';
     // \▲[CN=RENDERER.BUILD.INDICATOR]
 
     // \▼[CN=RENDERER.BUILD.OPEN] // 開始膜HTML
@@ -178,7 +177,7 @@ function buildMupHtmlMap(blocks, lines){
       openHtml='<div class="mup" data-mup-sym="'+escH(isV?'v':'h')+'" data-mup-pfx="'+escH(b.pfx)+'" data-mup-cn="'+escH(cn)+'"'
         +(isLocked?' data-mup-locked="true"':'')+' style="border-left:4px solid '+col+';margin:8px 0">'
         +'<div class="mup-hd" style="padding:4px 10px;">'
-        +'<span class="mup-hd-lbl" style="display:inline-flex;align-items:center;gap:2px;user-select:none;">'
+        +'<span class="mup-hd-lbl" style="display:inline-flex;align-items:center;gap:2px;user-select:none;"'+mupStateAttr+'>'
         +'<span class="mup-ico" style="color:'+col+';font-size:0.75em;cursor:default">'+ico+'</span>'
         +'<span class="mup-pfx-'+escH(b.pfx)+'" style="font-size:'+hfs+';font-weight:bold;margin:0;cursor:text;user-select:text"> '+escH(cn)+'</span>'
         +(comment?' <em style="color:#555;cursor:text;user-select:text"> // '+comment+'</em>':'')
@@ -190,7 +189,7 @@ function buildMupHtmlMap(blocks, lines){
       openHtml='<div class="mup" data-mup-sym="'+escH(isV?'v':'h')+'" data-mup-pfx="'+escH(b.pfx)+'" data-mup-cn="'+escH(cn)+'"'
         +(isLocked?' data-mup-locked="true"':'')+' style="border-left:3px solid '+col+';margin:4px 0">'
         +'<div class="mup-hd" style="padding:3px 8px;font-size:0.85em;">'
-        +'<span class="mup-hd-lbl" style="display:inline-flex;align-items:center;gap:2px;background:#f8f8f8;padding:1px 6px;border-radius:3px;user-select:none;">'
+        +'<span class="mup-hd-lbl" style="display:inline-flex;align-items:center;gap:2px;background:#f8f8f8;padding:1px 6px;border-radius:3px;user-select:none;"'+mupStateAttr+'>'
         +'<span class="mup-ico" style="color:'+col+';cursor:default">'+ico+'</span>'
         +'<span style="font-family:monospace;color:#888;cursor:text;user-select:text"> '+escH(cn)+'</span>'
         +(comment?' <em style="color:#555;cursor:text;user-select:text"> // '+comment+'</em>':'')

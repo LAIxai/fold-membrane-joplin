@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.31
+ * @version 8.32
  * @date    2026.04.09(木)
  * @author  俊克 + Claude (Anthropic)
  * @desc
@@ -785,7 +785,8 @@ joplin.plugins.register({
       /\]\n\(:\/[a-f0-9]/.test(b) ||                    // ]\n(:/id) 分断リンク（旧バージョン破損）
       /\]\n\(file:\/\/\//.test(b) ||                    // ]\n(file:///) 分断画像（旧バージョン破損）
       /file:\/\/\/[^)]*\/resources\/[a-f0-9]/.test(b) || // file:///パス残存（旧バージョン破損）
-      b.includes('joplin-table-wrapper');                 // HTMLテーブル残存（旧バージョン破損）
+      b.includes('joplin-table-wrapper') ||               // HTMLテーブル残存（旧バージョン破損）
+      /`[⇄⇒]*\[🛒\]`/.test(b);                          // 🛒インジケーターbacktick残骸（v0.9.28-31破損ノート）
     // \▲[CN=6174_hasDmg]
 
     // \▼[CN=2847_isMarkdownMode] // エディタモード判定ユーティリティ
