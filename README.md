@@ -1,4 +1,4 @@
-# Fold Membrane — markMup 仕様書 v4.0
+# Fold Membrane — markMup 仕様書 v4.1
 
 ▼m[H1=markMup仕様書] // Mark Membrane Markup / 構造膜マークアップ
 
