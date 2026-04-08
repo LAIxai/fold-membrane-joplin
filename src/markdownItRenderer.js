@@ -1,7 +1,7 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 5.6
+ * @version 5.7
  * @date    2026.04.09(木)
  * @desc    v2.x-v3.x: 全行自前処理方式（renderMarkMup）。罫線・空行に副作用あり。
  *          v4.0: 全面リアーキテクチャ。膜行・栞行のみプレースホルダーに置換→
@@ -22,6 +22,8 @@
  *          v5.6: 折畳み全7状態インジケーター実装。
  *                analyzeBodyState追加。中身×リンク種別(⇄/⇒)を自動検出し、
  *                空膜=[🛒]、リンクのみ=⇄[🛒]/⇒[🛒]、中身+リンク=[⊖N] ⇄⇒ を表示。
+ *          v5.7: RE_LINK_ME を /Me⇒|⇒Me/ に拡張。
+ *                Me⇒{B}（自膜→先）・{A}⇒Me（他→自膜）も ⇒ アイコン表示対象に。
  * @author  俊克 + Claude (Anthropic)
  * @desc    markMup膜記法をJoplinのMarkdown-itでHTMLレンダリングする
  */
@@ -36,7 +38,7 @@ var RE_BM     = /^[ \t]*(?:\$?(?:🔖m|🔖_[Mm🄼]|[Mm🄼]🔖)\[([^\]]*)\]\$
 var RE_BM_DIV = /<(?:div|span)[^>]*data-mup="bookmark"[^>]*data-mup-label="([^"]*)"[^>]*>/;
 var DEPTH_COLORS = ['#9b6fc4','#5588cc','#4aaa6a','#c8a040','#cc7744','#44aacc'];
 var RE_LINK_BIDIR = /⇄\s*\{/;   // 相互リンク記法 ⇄ {CN=...}
-var RE_LINK_ME    = /⇒Me⇒/;     // Me結合記法 {A} ⇒Me⇒ {B}
+var RE_LINK_ME    = /Me⇒|⇒Me/;  // Me結合記法: {A}⇒Me⇒{B} / Me⇒{B} / {A}⇒Me
 // \▲[CN=RENDERER.CONST]
 
 // \▼[CN=RENDERER.UTIL] // ユーティリティ
