@@ -1,5 +1,6 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v3.5
+// \▼[CN=FOLD] // Fold Membrane - click handler v3.6
 // ─── changelog ───────────────────────────────────────
+// v3.6  2026.04.09(木) ラベルをWYSIWYG/プレビューで出し分け。名前span右クリックでメニュー表示。「名前をコピー」追加
 // v3.5  2026.04.09(木) renderer側で全名前spanにclass=mup-name付与。mousedown/up+selectionchange三段構え
 // v3.4  2026.04.09(木) selectionchange監視で名前span侵入カーソルを即座に追い出す（class未付与で不発）
 // v3.3  2026.04.09(木) 名前spanにuser-select:none!importantを追加（カーソル阻止不完全）
@@ -188,10 +189,12 @@ function mupStatusDraw(el, newState) {
     'position:fixed','z-index:99999','display:none',
     'background:#fff','border:1px solid #ccc',
     'border-radius:5px','box-shadow:0 3px 10px rgba(0,0,0,0.18)',
-    'padding:4px 0','min-width:130px','font-size:13px',
+    'padding:4px 0','min-width:160px','font-size:13px',
     'user-select:none','cursor:default'
   ].join(';');
   document.body.appendChild(_menu);
+
+  var _ctxMup = null; // 右クリック時の .mup 要素（コピー等で使用）
 
   function _addItem(label, action) {
     var item = document.createElement('div');
@@ -202,7 +205,13 @@ function mupStatusDraw(el, newState) {
     item.onclick = function(){ _hide(); action(); };
     _menu.appendChild(item);
   }
-  function _show(x, y) {
+  function _addSep() {
+    var sep = document.createElement('div');
+    sep.style.cssText = 'height:1px;background:#eee;margin:3px 0;';
+    _menu.appendChild(sep);
+  }
+  function _show(x, y, mupEl) {
+    _ctxMup = mupEl || null;
     _menu.style.display = 'block';
     var mx = Math.min(x, window.innerWidth  - _menu.offsetWidth  - 8);
     var my = Math.min(y, window.innerHeight - _menu.offsetHeight - 8);
@@ -211,20 +220,34 @@ function mupStatusDraw(el, newState) {
   }
   function _hide() { _menu.style.display = 'none'; }
 
-  _addItem('⇄ エディタ切替（名前の編集）', function() {
-    webviewApi.postMessage('markMupRenderer', { type: 'mupToggleEditor' });
+  // ① エディタ切替: WYSIWYGでは「名前の編集」用途を明示、プレビューでは汎用ラベル
+  _addItem(
+    _isWYSIWYG ? '⇄ エディタ切替（名前の編集）' : '⇄ エディタ切替',
+    function() {
+      webviewApi.postMessage('markMupRenderer', { type: 'mupToggleEditor' });
+    }
+  );
+  // ② 名前をコピー: data-mup-cn属性からCN名を取得してクリップボードへ
+  _addSep();
+  _addItem('📋 名前をコピー', function() {
+    var name = _ctxMup ? (_ctxMup.getAttribute('data-mup-cn') || '') : '';
+    if (!name) return;
+    navigator.clipboard.writeText(name).catch(function(){});
   });
   // \▲[CN=FOLD.CTX.MENU]
 
   // \▼[CN=FOLD.CTX.EVENT] // 右クリックイベント
-  // 対象: .mup-ico（▼▶▲アイコン）のみ。WYSIWYG・Markdown共通。
-  // キャプチャ相(true) + stopImmediatePropagation でTinyMCEより先に処理
+  // WYSIWYG: .mup-ico と .mup-name（名前span）の両方を対象
+  // Markdownプレビュー: .mup-ico のみ
+  // キャプチャ相(true) + stopImmediatePropagation でTinyMCEのメニューを完全抑制
+  var _ctxSelector = _isWYSIWYG ? '.mup-ico, .mup-name' : '.mup-ico';
   document.addEventListener('contextmenu', function(e) {
-    var target = e.target.closest('.mup-ico');
+    var target = e.target.closest(_ctxSelector);
     if (!target) { _hide(); return; }
     e.preventDefault();
     e.stopImmediatePropagation();
-    _show(e.clientX, e.clientY);
+    var mupEl = e.target.closest('.mup');
+    _show(e.clientX, e.clientY, mupEl);
   }, true);
   document.addEventListener('click', function(e) {
     if (!_menu.contains(e.target)) _hide();
