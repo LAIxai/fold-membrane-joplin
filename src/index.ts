@@ -176,6 +176,7 @@
  *   v8.27 2026.04.08(水) markdownItRenderer.js v5.4: アイコンcursor:default、閉じ膜inline-flex化。
  *   v8.28 2026.04.08(水) markdownItRenderer.js v5.5: 栞ボタンもcursor:default（矢印）に変更。
  *   v8.29 2026.04.08(水) CN=6291 NAME_SYNC追加: WYSIWYG編集後の開閉膜名不一致をrepairMupSpan内で自動修正。
+ *   v8.33 2026.04.09(木) CN=3901 ANTISPOOFING: mupToggle受信直後にノートIDを保存。300msプローブ後・PUT直前に二重照合。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -709,6 +710,14 @@ joplin.plugins.register({
 
       if (msg.type !== 'mupToggle') return;
 
+      // \▼[CN=3901_onMessage.ANTISPOOFING] // 成済まし防止: メッセージ受信時点のノートIDを保存
+      // 300msプローブ中にユーザーがノートを切り替えると selectedNote() が別ノートを返す → 成済まし発生。
+      // 解決: プローブ開始前にノートIDを取得し、以降の各処理で照合する。
+      const _antiSpoofNote = await joplin.workspace.selectedNote();
+      const _antiSpoofId = _antiSpoofNote?.id;
+      if (!_antiSpoofId) return;
+      // \▲[CN=3901_onMessage.ANTISPOOFING]
+
       // \▼[CN=8347_onMessage.PROBE] // mupCheckModeでMarkdown/WYSIWYGモード判定
       // CodeMirrorならpostMessage応答→true / WYSIWYGなら300ms後タイムアウト→false
       const isMarkdown = await new Promise<boolean>(resolve => {
@@ -724,6 +733,8 @@ joplin.plugins.register({
       // \▼[CN=2091_onMessage.REGEX] // 開始膜行のバッジを置換（v2.0: pfx対応・旧形式\▼・新形式`$\▼両対応）
       const note = await joplin.workspace.selectedNote();
       if (!note) return;
+      // 成済まし防止: プローブ中にノート切替が起きていないか確認
+      if (note.id !== _antiSpoofId) return;
       const mupPfx = String(msg.pfx || 'CN'); // v2.0: CN/H1/H2/H3
       const rawCn = String(msg.cn);
       const escapedCn = rawCn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -749,6 +760,9 @@ joplin.plugins.register({
 
       // \▼[CN=5763_onMessage.PUT] // DBへ書き戻し（WYSIWYGフォールバック兼用）
       if (newBody !== note.body) {
+        // 成済まし防止: 書き込み直前にも再確認
+        const _finalCheck = await joplin.workspace.selectedNote();
+        if (_finalCheck?.id !== _antiSpoofId) return;
         await joplin.data.put(['notes', note.id], null, { body: newBody });
       }
       // \▲[CN=5763_onMessage.PUT]
