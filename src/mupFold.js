@@ -1,5 +1,6 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v3.9
+// \▼[CN=FOLD] // Fold Membrane - click handler v4.0
 // ─── changelog ───────────────────────────────────────
+// v4.0  2026.04.10(金) 🟢アクティブ膜マーク: WYSIWYG内でカーソルが入っている膜にdata-mup-active→CSS::afterで🟢表示
 // v3.9  2026.04.09(木) CNアンカースクロール: エディタ切替時に対象膜のCNを記録→WYSIWYG起動後にscrollIntoView
 // v3.8  2026.04.09(木) _isWYSIWYG変数の宣言漏れを修正（v3.5で消えてReferenceError→IIFE全壊）
 // v3.7  2026.04.09(木) mouseup防止を削除・右クリックはbutton!==0でスルー。_ctxSelectorを単純化
@@ -203,6 +204,30 @@ function _findNearestVisibleMup() {
     });
   }
   // \▲[CN=FOLD.CTX.PROTECT]
+
+  // \▼[CN=FOLD.CTX.ACTIVE] // 🟢アクティブ膜マーク（WYSIWYGのみ）
+  // カーソルが .mup 内にある間、data-mup-active="true" を付与。
+  // mupStyle.css の .mup[data-mup-active="true"] .mup-status::after で🟢を表示。
+  // TinyMCEはCSS::afterをシリアライズしないので本文汚染ゼロ。
+  if (_isWYSIWYG) {
+    var _activeMup = null;
+    function _setActiveMup(mupEl) {
+      if (_activeMup === mupEl) return;
+      if (_activeMup) _activeMup.removeAttribute('data-mup-active');
+      _activeMup = mupEl || null;
+      if (_activeMup) _activeMup.setAttribute('data-mup-active', 'true');
+    }
+    document.addEventListener('selectionchange', function() {
+      var sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) { _setActiveMup(null); return; }
+      var node = sel.getRangeAt(0).startContainer;
+      var el = (node.nodeType === 3) ? node.parentElement : node;
+      _setActiveMup(el ? (el.closest('.mup') || null) : null);
+    });
+    // フォーカスが外れたら解除
+    document.addEventListener('blur', function() { _setActiveMup(null); }, true);
+  }
+  // \▲[CN=FOLD.CTX.ACTIVE]
 
   // \▼[CN=FOLD.CTX.MENU] // コンテキストメニューDOM
   var _menu = document.createElement('div');
