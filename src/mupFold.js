@@ -1,5 +1,6 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v3.0
+// \▼[CN=FOLD] // Fold Membrane - click handler v3.1
 // ─── changelog ───────────────────────────────────────
+// v3.1  2026.04.09(木) WYSIWYGプロテクション全廃。右クリックメニュー対象を.mup-icoのみに限定
 // v3.0  2026.04.09(木) mousedown保護: button判定を除去（右クリックも含む全ボタンで文字カーソル阻止）
 // v2.9  2026.04.09(木) 対象を.mup-hd/.mup-ft行全体に修正（本文エリアは対象外）。WYSIWYGもMarkdownも同一ターゲット
 // v2.8  2026.04.09(木) WYSIWYGプロテクション修正: contenteditable=false→mousedownキャプチャ方式に変更・contextmenuもキャプチャ相+stopImmediatePropagation
@@ -116,29 +117,8 @@ function mupStatusDraw(el, newState) {
 }
 // \▲[CN=FOLD.DRAW]
 
-// \▼[CN=FOLD.CTX] // 右クリックコンテキストメニュー（エディタ切替）+ WYSIWYGプロテクション
+// \▼[CN=FOLD.CTX] // 右クリックコンテキストメニュー（エディタ切替）
 (function() {
-  // \▼[CN=FOLD.CTX.MODE] // モード判定: WYSIWYGはbody.contentEditable==="true"
-  var _isWYSIWYG = document.body.getAttribute('contenteditable') === 'true';
-  // \▲[CN=FOLD.CTX.MODE]
-
-  // \▼[CN=FOLD.CTX.PROTECT] // WYSIWYGプロテクション: ヘッダー・フッター行を矢印カーソル・誤編集防止
-  // 対象: .mup-hd（開始膜行全体）/ .mup-ft（閉じ膜行全体）。本文(.mup-bd)は対象外。
-  if (_isWYSIWYG) {
-    // ① CSS: ヘッダー・フッター行を矢印カーソルに統一
-    var _st = document.createElement('style');
-    _st.textContent =
-      '.mup-hd,.mup-hd *,.mup-ft,.mup-ft *{cursor:default!important}';
-    document.head.appendChild(_st);
-    // ② mousedown をキャプチャ相で先取り: .mup-ico（折畳みボタン）以外はpreventDefault
-    //    → TinyMCEがヘッダー・フッター内にテキストカーソルを置けなくなる
-    document.addEventListener('mousedown', function(e) {
-      if (e.target.closest('.mup-ico')) return; // 折畳みアイコンはスルー
-      if (!e.target.closest('.mup-hd, .mup-ft')) return; // ヘッダー・フッター以外はスルー
-      e.preventDefault(); // 左右どちらのクリックも文字カーソル配置を阻止
-    }, true);
-  }
-  // \▲[CN=FOLD.CTX.PROTECT]
 
   // \▼[CN=FOLD.CTX.MENU] // コンテキストメニューDOM
   var _menu = document.createElement('div');
@@ -176,12 +156,10 @@ function mupStatusDraw(el, newState) {
   // \▲[CN=FOLD.CTX.MENU]
 
   // \▼[CN=FOLD.CTX.EVENT] // 右クリックイベント
-  // WYSIWYG: 膜全体(.mup) / Markdownプレビュー: ヘッダー・フッターのみ
-  // キャプチャ相(true)で先取り → TinyMCEのcontextmenuを完全抑制
-  // WYSIWYG・Markdown共に .mup-hd / .mup-ft 行全体が対象
+  // 対象: .mup-ico（▼▶▲アイコン）のみ。WYSIWYG・Markdown共通。
   // キャプチャ相(true) + stopImmediatePropagation でTinyMCEより先に処理
   document.addEventListener('contextmenu', function(e) {
-    var target = e.target.closest('.mup-hd, .mup-ft');
+    var target = e.target.closest('.mup-ico');
     if (!target) { _hide(); return; }
     e.preventDefault();
     e.stopImmediatePropagation();
