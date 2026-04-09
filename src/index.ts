@@ -176,6 +176,7 @@
  *   v8.27 2026.04.08(水) markdownItRenderer.js v5.4: アイコンcursor:default、閉じ膜inline-flex化。
  *   v8.28 2026.04.08(水) markdownItRenderer.js v5.5: 栞ボタンもcursor:default（矢印）に変更。
  *   v8.29 2026.04.08(水) CN=6291 NAME_SYNC追加: WYSIWYG編集後の開閉膜名不一致をrepairMupSpan内で自動修正。
+ *   v8.34 2026.04.09(木) CN=4721 SCROLL_TARGET: Markdown→WYSIWYG切替時にCNアンカーを保存。WYSIWYG起動後にscrollIntoViewで対象膜へ自動スクロール。
  *   v8.33 2026.04.09(木) CN=3901 ANTISPOOFING: mupToggle受信直後にノートIDを保存。300msプローブ後・PUT直前に二重照合。
  * \▲[CN=5831_FILE_HEADER]
  */
@@ -655,6 +656,9 @@ joplin.plugins.register({
     // mupEditor.js(CodeMirror)がwebviewApi.postMessageで応答→Markdownモード確定
     // WYSIWYGでは応答なし→300msタイムアウト→WYSIWYGモード確定
     let _modeCheckResolve: ((v: boolean) => void) | null = null;
+    // \▼[CN=4721_scrollTarget] // Markdown→WYSIWYG切替時のCNアンカー（スクロール復元用）
+    let _pendingScrollCN: string | null = null;
+    // \▲[CN=4721_scrollTarget]
     await joplin.contentScripts.onMessage('markMupEditor', async (msg: any) => {
       if (msg?.type === 'mupCheckMode' && _modeCheckResolve) {
         const resolve = _modeCheckResolve;
@@ -674,6 +678,8 @@ joplin.plugins.register({
       if (msg.type === 'mupToggleEditor') {
         // \▼[CN=6302_onMessage.TOGGLE_EDITOR.REPAIR] // WYSIWYG→Markdown時: 全破壊を自動復旧
         const wasWYSIWYG = !(await isMarkdownMode());
+        // CN=4721: Markdown→WYSIWYG切替時にアンカーCNを保存（WYSIWYG起動後にscrollIntoView）
+        if (!wasWYSIWYG && msg.cn) _pendingScrollCN = msg.cn;
         await joplin.commands.execute('toggleEditors');
         if (wasWYSIWYG) {
           // ① Markdownモードに切り替わるまで待つ
@@ -707,6 +713,14 @@ joplin.plugins.register({
         return;
       }
       // \▲[CN=5139_onMessage.TOGGLE_EDITOR]
+
+      // \▼[CN=4721_onMessage.SCROLL_TARGET] // WYSIWYG起動時: アンカーCNを返して消費
+      if (msg.type === 'mupGetScrollTarget') {
+        const cn = _pendingScrollCN;
+        _pendingScrollCN = null;
+        return { cn };
+      }
+      // \▲[CN=4721_onMessage.SCROLL_TARGET]
 
       if (msg.type !== 'mupToggle') return;
 

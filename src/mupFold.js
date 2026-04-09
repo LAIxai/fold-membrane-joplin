@@ -1,5 +1,6 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v3.6
+// \▼[CN=FOLD] // Fold Membrane - click handler v3.9
 // ─── changelog ───────────────────────────────────────
+// v3.9  2026.04.09(木) CNアンカースクロール: エディタ切替時に対象膜のCNを記録→WYSIWYG起動後にscrollIntoView
 // v3.8  2026.04.09(木) _isWYSIWYG変数の宣言漏れを修正（v3.5で消えてReferenceError→IIFE全壊）
 // v3.7  2026.04.09(木) mouseup防止を削除・右クリックはbutton!==0でスルー。_ctxSelectorを単純化
 // v3.6  2026.04.09(木) ラベルをWYSIWYG/プレビューで出し分け。名前span右クリックでメニュー表示。「名前をコピー」追加（mouseup追加が原因でcontextmenu不発）
@@ -28,7 +29,10 @@ document.addEventListener('click', function(e) {
   // \▼[CN=FOLD.CLICK.BOOKMARK] // 🔖しおりボタン: クリック→エディタ切替
   var bm = e.target.closest('.mup-bookmark');
   if (bm) {
-    webviewApi.postMessage('markMupRenderer', { type: 'mupToggleEditor' });
+    // ビューポート中央に最も近い膜のCNをアンカーとして送る
+    var _anchorMup = _findNearestVisibleMup();
+    var _anchorCn  = _anchorMup ? _anchorMup.getAttribute('data-mup-cn') : null;
+    webviewApi.postMessage('markMupRenderer', { type: 'mupToggleEditor', cn: _anchorCn });
     return;
   }
   // \▲[CN=FOLD.CLICK.BOOKMARK]
@@ -123,6 +127,21 @@ function mupStatusDraw(el, newState) {
   el.style.color  = isInf ? '#e00' : '#aaa';
 }
 // \▲[CN=FOLD.DRAW]
+
+// \▼[CN=FOLD.NEAREST] // ビューポート中央に最も近い .mup 要素を返す（スクロールアンカー用）
+function _findNearestVisibleMup() {
+  var mups = document.querySelectorAll('.mup');
+  var best = null, bestDist = Infinity;
+  var cy = window.innerHeight / 2;
+  for (var i = 0; i < mups.length; i++) {
+    var r = mups[i].getBoundingClientRect();
+    if (r.bottom < 0 || r.top > window.innerHeight) continue; // 画面外
+    var dist = Math.abs(r.top + r.height / 2 - cy);
+    if (dist < bestDist) { bestDist = dist; best = mups[i]; }
+  }
+  return best;
+}
+// \▲[CN=FOLD.NEAREST]
 
 // \▼[CN=FOLD.CTX] // 右クリックコンテキストメニュー（エディタ切替）+ 名前部分プロテクション
 (function() {
@@ -227,7 +246,9 @@ function mupStatusDraw(el, newState) {
   _addItem(
     _isWYSIWYG ? '⇄ エディタ切替（名前の編集）' : '⇄ エディタ切替',
     function() {
-      webviewApi.postMessage('markMupRenderer', { type: 'mupToggleEditor' });
+      // 右クリックした膜のCNをアンカーとして送る（スクロール復元用）
+      var cn = _ctxMup ? _ctxMup.getAttribute('data-mup-cn') : null;
+      webviewApi.postMessage('markMupRenderer', { type: 'mupToggleEditor', cn: cn });
     }
   );
   // ② 名前をコピー: data-mup-cn属性からCN名を取得してクリップボードへ
@@ -238,6 +259,21 @@ function mupStatusDraw(el, newState) {
     navigator.clipboard.writeText(name).catch(function(){});
   });
   // \▲[CN=FOLD.CTX.MENU]
+
+  // \▼[CN=FOLD.CTX.SCROLL] // WYSIWYG起動時: スクロールターゲット膜へ自動スクロール
+  // Markdown→WYSIWYG切替後、index.tsが保持していたCNアンカーを照会しscrollIntoViewする
+  if (_isWYSIWYG) {
+    webviewApi.postMessage('markMupRenderer', { type: 'mupGetScrollTarget' })
+      .then(function(res) {
+        if (!res || !res.cn) return;
+        // TinyMCEのレンダリング完了を待って実行
+        setTimeout(function() {
+          var el = document.querySelector('.mup[data-mup-cn="' + res.cn + '"]');
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 400);
+      });
+  }
+  // \▲[CN=FOLD.CTX.SCROLL]
 
   // \▼[CN=FOLD.CTX.EVENT] // 右クリックイベント
   // 対象: .mup-ico と .mup-name — WYSIWYG・Markdownプレビュー共通
