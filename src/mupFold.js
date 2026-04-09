@@ -1,5 +1,6 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v4.2
+// \▼[CN=FOLD] // Fold Membrane - click handler v4.3
 // ─── changelog ───────────────────────────────────────
+// v4.3  2026.04.10(金) 🟢を<head>動的<style>方式に刷新。TinyMCEのbodyに属性不要→シリアライズ汚染・ループ根絶
 // v4.2  2026.04.10(金) 🟢消えるバグ修正: _activeCN+MutationObserverでDOM再構築後に復元。ヘッダー全域クリックに対応
 // v4.1  2026.04.10(金) 🟢をクリック/展開/メニュー時に付与に変更。selectionchange方式廃止（ネスト2重バグ解消）
 // v4.0  2026.04.10(金) 🟢アクティブ膜マーク: WYSIWYG内でカーソルが入っている膜にdata-mup-active→CSS::afterで🟢表示
@@ -27,26 +28,34 @@
 // ─────────────────────────────────────────────────────
 
 // \▼[CN=FOLD.ACTIVE] // アクティブ膜管理（クリック/展開/メニュー時に🟢付与）
-// 最後に操作した膜が1つだけ data-mup-active="true" を持つ。
-// _activeCN: DOM再構築後にMutationObserverで復元するためCN文字列も保持する。
-// mupStyle.css の > .mup-hd .mup-status::after でネスト膜には届かない。
-var _activeCN = null;
+// 【設計】TinyMCEのbodyに属性を書くと変更検知→自動保存→ノートボディ汚染→再レンダリングのループになる。
+// 解決策: <head>に動的<style>を注入し、CSSでCN名を直接ターゲット。TinyMCEのbodyには一切触らない。
+// 再レンダリング後もheadの<style>は残るため、🟢は消えない。
+var _activeCN = null;  // スクロールアンカー(v0.9.49)にも兼用
+
+var _activeStyle = (function() {
+  var st = document.getElementById('mup-active-style');
+  if (!st) {
+    st = document.createElement('style');
+    st.id = 'mup-active-style';
+    document.head.appendChild(st);
+  }
+  return st;
+}());
 
 function _setActiveMup(mupEl) {
-  var prev = document.querySelector('.mup[data-mup-active="true"]');
-  if (prev && prev !== mupEl) prev.removeAttribute('data-mup-active');
+  // 一旦クリア→新たな場所に表示（ユーザー提案方式）
   _activeCN = mupEl ? mupEl.getAttribute('data-mup-cn') : null;
-  if (mupEl) mupEl.setAttribute('data-mup-active', 'true');
+  if (_activeCN) {
+    // CSS属性セレクターの値は文字列扱いなのでドット等の特殊文字も安全
+    _activeStyle.textContent =
+      '.mup[data-mup-cn="' + _activeCN.replace(/"/g, '\\"') + '"]'
+      + ' > .mup-hd .mup-status::after {'
+      + 'content:"🟢";font-size:0.85em;margin-left:3px;vertical-align:middle}';
+  } else {
+    _activeStyle.textContent = '';
+  }
 }
-
-// DOM再構築後（Joplinのnote更新による再レンダリング）にアクティブ状態を復元
-// data.put → Joplin再レンダリング → DOMが作り直され data-mup-active が消える問題の対策
-;(new MutationObserver(function() {
-  if (!_activeCN) return;
-  // ":not([data-mup-active])" でまだ未付与の場合だけ処理（無限ループ防止）
-  var el = document.querySelector('.mup[data-mup-cn="' + _activeCN + '"]:not([data-mup-active])');
-  if (el) el.setAttribute('data-mup-active', 'true');
-})).observe(document.body, { childList: true, subtree: true });
 // \▲[CN=FOLD.ACTIVE]
 
 // \▼[CN=FOLD.CLICK] // クリックイベント
@@ -64,9 +73,9 @@ document.addEventListener('click', function(e) {
   // \▼[CN=FOLD.CLICK.BOOKMARK] // 🔖しおりボタン: クリック→エディタ切替
   var bm = e.target.closest('.mup-bookmark');
   if (bm) {
-    // 最後に操作したアクティブ膜→なければビューポート中央に最も近い膜をアンカーに
-    var _anchorMup = document.querySelector('.mup[data-mup-active="true"]') || _findNearestVisibleMup();
-    var _anchorCn  = _anchorMup ? _anchorMup.getAttribute('data-mup-cn') : null;
+    // 最後に操作したアクティブ膜のCN→なければビューポート中央の膜をアンカーに
+    var _nearMup  = _findNearestVisibleMup();
+    var _anchorCn = _activeCN || (_nearMup ? _nearMup.getAttribute('data-mup-cn') : null);
     webviewApi.postMessage('markMupRenderer', { type: 'mupToggleEditor', cn: _anchorCn });
     return;
   }

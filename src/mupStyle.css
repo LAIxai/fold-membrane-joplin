@@ -1,16 +1,9 @@
 /* Fold Membrane styles v1.3 */
 .mup-hd-lbl:hover { opacity: 0.8; }
 
-/* アクティブ膜: 最後にクリック/展開/メニュー操作した膜に🟢を表示
- * data-mup-active="true" を .mup に付与 → 直下の .mup-hd 内の .mup-status::after で🟢を追加。
- * ">" 直接子セレクタでネスト膜の .mup-status には届かない。
- * CSS::afterはTinyMCEがシリアライズしないので本文汚染ゼロ。 */
-.mup[data-mup-active="true"] > .mup-hd .mup-status::after {
-  content: '🟢';
-  font-size: 0.85em;
-  margin-left: 3px;
-  vertical-align: middle;
-}
+/* アクティブ膜の🟢は mupFold.js が <head> に動的 <style> を注入して表示。
+ * TinyMCE bodyに属性を書くと自動保存→ノートボディ汚染になるため、headのstyleで管理。
+ * ルール: .mup[data-mup-cn="CN名"] > .mup-hd .mup-status::after { content:"🟢" } */
 .mup-ico { font-size: 0.8em; vertical-align: middle; }
 
 /* 折畳み状態インジケーター（🛒 / ⇄ / ⇒）
