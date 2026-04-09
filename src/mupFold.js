@@ -1,5 +1,6 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v4.0
+// \▼[CN=FOLD] // Fold Membrane - click handler v4.1
 // ─── changelog ───────────────────────────────────────
+// v4.1  2026.04.10(金) 🟢をクリック/展開/メニュー時に付与に変更。selectionchange方式廃止（ネスト2重バグ解消）
 // v4.0  2026.04.10(金) 🟢アクティブ膜マーク: WYSIWYG内でカーソルが入っている膜にdata-mup-active→CSS::afterで🟢表示
 // v3.9  2026.04.09(木) CNアンカースクロール: エディタ切替時に対象膜のCNを記録→WYSIWYG起動後にscrollIntoView
 // v3.8  2026.04.09(木) _isWYSIWYG変数の宣言漏れを修正（v3.5で消えてReferenceError→IIFE全壊）
@@ -24,14 +25,24 @@
 // v1.0  2026.03.23(月) 初版（膜ヘッダークリックで開閉）
 // ─────────────────────────────────────────────────────
 
+// \▼[CN=FOLD.ACTIVE] // アクティブ膜管理（クリック/展開/メニュー時に🟢付与）
+// 最後に操作した膜が1つだけ data-mup-active="true" を持つ。
+// mupStyle.css の > .mup-hd .mup-status::after でネスト膜には届かない。
+function _setActiveMup(mupEl) {
+  var prev = document.querySelector('.mup[data-mup-active="true"]');
+  if (prev && prev !== mupEl) prev.removeAttribute('data-mup-active');
+  if (mupEl) mupEl.setAttribute('data-mup-active', 'true');
+}
+// \▲[CN=FOLD.ACTIVE]
+
 // \▼[CN=FOLD.CLICK] // クリックイベント
 document.addEventListener('click', function(e) {
 
   // \▼[CN=FOLD.CLICK.BOOKMARK] // 🔖しおりボタン: クリック→エディタ切替
   var bm = e.target.closest('.mup-bookmark');
   if (bm) {
-    // ビューポート中央に最も近い膜のCNをアンカーとして送る
-    var _anchorMup = _findNearestVisibleMup();
+    // 最後に操作したアクティブ膜→なければビューポート中央に最も近い膜をアンカーに
+    var _anchorMup = document.querySelector('.mup[data-mup-active="true"]') || _findNearestVisibleMup();
     var _anchorCn  = _anchorMup ? _anchorMup.getAttribute('data-mup-cn') : null;
     webviewApi.postMessage('markMupRenderer', { type: 'mupToggleEditor', cn: _anchorCn });
     return;
@@ -55,6 +66,9 @@ document.addEventListener('click', function(e) {
   // \▼[CN=FOLD.CLICK.LOCK] // ⊘ ロック確認
   if (mup.getAttribute('data-mup-locked') === 'true') return;
   // \▲[CN=FOLD.CLICK.LOCK]
+
+  // アイコンクリックした膜を🟢アクティブに
+  _setActiveMup(mup);
 
   // \▼[CN=FOLD.CLICK.ELEMENTS] // 要素取得
   var hd   = mup.querySelector('.mup-hd');
@@ -205,30 +219,6 @@ function _findNearestVisibleMup() {
   }
   // \▲[CN=FOLD.CTX.PROTECT]
 
-  // \▼[CN=FOLD.CTX.ACTIVE] // 🟢アクティブ膜マーク（WYSIWYGのみ）
-  // カーソルが .mup 内にある間、data-mup-active="true" を付与。
-  // mupStyle.css の .mup[data-mup-active="true"] .mup-status::after で🟢を表示。
-  // TinyMCEはCSS::afterをシリアライズしないので本文汚染ゼロ。
-  if (_isWYSIWYG) {
-    var _activeMup = null;
-    function _setActiveMup(mupEl) {
-      if (_activeMup === mupEl) return;
-      if (_activeMup) _activeMup.removeAttribute('data-mup-active');
-      _activeMup = mupEl || null;
-      if (_activeMup) _activeMup.setAttribute('data-mup-active', 'true');
-    }
-    document.addEventListener('selectionchange', function() {
-      var sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0) { _setActiveMup(null); return; }
-      var node = sel.getRangeAt(0).startContainer;
-      var el = (node.nodeType === 3) ? node.parentElement : node;
-      _setActiveMup(el ? (el.closest('.mup') || null) : null);
-    });
-    // フォーカスが外れたら解除
-    document.addEventListener('blur', function() { _setActiveMup(null); }, true);
-  }
-  // \▲[CN=FOLD.CTX.ACTIVE]
-
   // \▼[CN=FOLD.CTX.MENU] // コンテキストメニューDOM
   var _menu = document.createElement('div');
   _menu.id = 'mup-ctx';
@@ -309,6 +299,8 @@ function _findNearestVisibleMup() {
     e.preventDefault();
     e.stopImmediatePropagation();
     var mupEl = e.target.closest('.mup');
+    // 右クリックした膜を🟢アクティブに
+    _setActiveMup(mupEl);
     _show(e.clientX, e.clientY, mupEl);
   }, true);
   document.addEventListener('click', function(e) {

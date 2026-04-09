@@ -1,10 +1,11 @@
 /* Fold Membrane styles v1.3 */
 .mup-hd-lbl:hover { opacity: 0.8; }
 
-/* アクティブ膜: 文字カーソルが膜の中にある時に🟢を表示（WYSIWYGのみ）
- * data-mup-active="true" を .mup に付与 → .mup-status::after で🟢を追加。
+/* アクティブ膜: 最後にクリック/展開/メニュー操作した膜に🟢を表示
+ * data-mup-active="true" を .mup に付与 → 直下の .mup-hd 内の .mup-status::after で🟢を追加。
+ * ">" 直接子セレクタでネスト膜の .mup-status には届かない。
  * CSS::afterはTinyMCEがシリアライズしないので本文汚染ゼロ。 */
-.mup[data-mup-active="true"] .mup-status::after {
+.mup[data-mup-active="true"] > .mup-hd .mup-status::after {
   content: '🟢';
   font-size: 0.85em;
   margin-left: 3px;
