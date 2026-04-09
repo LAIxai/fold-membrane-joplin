@@ -1,5 +1,6 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v3.1
+// \▼[CN=FOLD] // Fold Membrane - click handler v3.2
 // ─── changelog ───────────────────────────────────────
+// v3.2  2026.04.09(木) 名前span($...$部分)のみ矢印+編集阻止。//コメント・バッジは編集可
 // v3.1  2026.04.09(木) WYSIWYGプロテクション全廃。右クリックメニュー対象を.mup-icoのみに限定
 // v3.0  2026.04.09(木) mousedown保護: button判定を除去（右クリックも含む全ボタンで文字カーソル阻止）
 // v2.9  2026.04.09(木) 対象を.mup-hd/.mup-ft行全体に修正（本文エリアは対象外）。WYSIWYGもMarkdownも同一ターゲット
@@ -117,8 +118,30 @@ function mupStatusDraw(el, newState) {
 }
 // \▲[CN=FOLD.DRAW]
 
-// \▼[CN=FOLD.CTX] // 右クリックコンテキストメニュー（エディタ切替）
+// \▼[CN=FOLD.CTX] // 右クリックコンテキストメニュー（エディタ切替）+ 名前部分プロテクション
 (function() {
+
+  // \▼[CN=FOLD.CTX.PROTECT] // WYSIWYG: 名前span($...$部分)のみ矢印カーソル・編集阻止
+  // .mup-hd/.mup-ft 内で em(コメント) と .mup-status(バッジ) は編集可のままにする
+  if (document.body.getAttribute('contenteditable') === 'true') {
+    var _st = document.createElement('style');
+    _st.textContent = [
+      // ヘッダー・フッター全体はデフォルト矢印（名前spanを含む余白も）
+      '.mup-hd,.mup-ft{cursor:default!important}',
+      // アイコンはもともとdefault（念のため）
+      '.mup-ico{cursor:default!important}',
+      // コメントemとバッジだけテキストカーソルに戻す
+      '.mup-hd em,.mup-ft em,.mup-hd .mup-status{cursor:text!important}'
+    ].join('');
+    document.head.appendChild(_st);
+    // mousedown: em・バッジ以外はpreventDefault → 名前spanに文字カーソルを出さない
+    document.addEventListener('mousedown', function(e) {
+      if (!e.target.closest('.mup-hd, .mup-ft')) return; // ヘッダー・フッター外はスルー
+      if (e.target.closest('em, .mup-status')) return;   // コメント・バッジは通す
+      e.preventDefault(); // 名前span・アイコン・余白への文字カーソルを阻止
+    }, true);
+  }
+  // \▲[CN=FOLD.CTX.PROTECT]
 
   // \▼[CN=FOLD.CTX.MENU] // コンテキストメニューDOM
   var _menu = document.createElement('div');
