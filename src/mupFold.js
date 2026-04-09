@@ -1,5 +1,6 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v2.5
+// \▼[CN=FOLD] // Fold Membrane - click handler v2.6
 // ─── changelog ───────────────────────────────────────
+// v2.6  2026.04.09(木) 右クリックコンテキストメニュー追加（エディタ切替）
 // v2.5  2026.04.06(月) 同名膜が複数あるときoccurrenceIndexを送信（index.ts側で正しい膜を更新）
 // v2.4  2026.04.06(月) 閉じ膜クリック時のmup特定を親を1段ずつ辿る方式に変更（ネスト膜バグ修正）
 // v2.3  2026.04.06(月) 閉じ膜▲アイコンクリックでも開閉トグル対応
@@ -110,5 +111,65 @@ function mupStatusDraw(el, newState) {
   el.style.color  = isInf ? '#e00' : '#aaa';
 }
 // \▲[CN=FOLD.DRAW]
+
+// \▼[CN=FOLD.CTX] // 右クリックコンテキストメニュー（エディタ切替）
+// 膜ヘッダー(.mup-hd-lbl)上で右クリック → 「エディタ切替」メニューを表示
+// WYSIWYG: Markdownモードへ切替 / Markdownプレビュー: WYSIWYGへ切替
+(function() {
+  // メニューDOM生成
+  var _menu = document.createElement('div');
+  _menu.id = 'mup-ctx';
+  _menu.style.cssText = [
+    'position:fixed', 'z-index:99999', 'display:none',
+    'background:#fff', 'border:1px solid #ccc',
+    'border-radius:5px', 'box-shadow:0 3px 10px rgba(0,0,0,0.18)',
+    'padding:4px 0', 'min-width:130px', 'font-size:13px',
+    'user-select:none', 'cursor:default'
+  ].join(';');
+  document.body.appendChild(_menu);
+
+  function _addItem(label, action) {
+    var item = document.createElement('div');
+    item.textContent = label;
+    item.style.cssText = 'padding:7px 18px;color:#333;';
+    item.onmouseenter = function(){ item.style.background='#e8f0fe'; item.style.color='#1a73e8'; };
+    item.onmouseleave = function(){ item.style.background=''; item.style.color='#333'; };
+    item.onclick = function(){ _hide(); action(); };
+    _menu.appendChild(item);
+  }
+
+  function _show(x, y) {
+    _menu.style.display = 'block';
+    // 画面端はみ出し防止
+    var mx = Math.min(x, window.innerWidth  - _menu.offsetWidth  - 8);
+    var my = Math.min(y, window.innerHeight - _menu.offsetHeight - 8);
+    _menu.style.left = Math.max(0, mx) + 'px';
+    _menu.style.top  = Math.max(0, my) + 'px';
+  }
+
+  function _hide() { _menu.style.display = 'none'; }
+
+  // メニュー項目
+  _addItem('⇄  エディタ切替', function() {
+    webviewApi.postMessage('markMupRenderer', { type: 'mupToggleEditor' });
+  });
+
+  // 右クリック: 膜ヘッダー領域なら表示（ブラウザデフォルトメニューを抑制）
+  document.addEventListener('contextmenu', function(e) {
+    var lbl = e.target.closest('.mup-hd-lbl, .mup-ft');
+    if (!lbl) { _hide(); return; }
+    e.preventDefault();
+    _show(e.clientX, e.clientY);
+  });
+
+  // メニュー外クリック・Escapeで閉じる
+  document.addEventListener('click', function(e) {
+    if (!_menu.contains(e.target)) _hide();
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') _hide();
+  });
+})();
+// \▲[CN=FOLD.CTX]
 
 // \▲[CN=FOLD]
