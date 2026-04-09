@@ -1,6 +1,7 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v3.3
+// \▼[CN=FOLD] // Fold Membrane - click handler v3.4
 // ─── changelog ───────────────────────────────────────
-// v3.3  2026.04.09(木) 名前spanにuser-select:none!importantを追加。キーボードカーソル侵入も阻止
+// v3.4  2026.04.09(木) selectionchange監視で名前span侵入カーソルを即座に追い出す
+// v3.3  2026.04.09(木) 名前spanにuser-select:none!importantを追加（カーソル阻止不完全）
 // v3.2  2026.04.09(木) 名前span($...$部分)のみ矢印+編集阻止。//コメント・バッジは編集可
 // v3.1  2026.04.09(木) WYSIWYGプロテクション全廃。右クリックメニュー対象を.mup-icoのみに限定
 // v3.0  2026.04.09(木) mousedown保護: button判定を除去（右クリックも含む全ボタンで文字カーソル阻止）
@@ -129,21 +130,48 @@ function mupStatusDraw(el, newState) {
     _st.textContent = [
       // ヘッダー・フッター全体はデフォルト矢印
       '.mup-hd,.mup-ft{cursor:default!important}',
-      // 名前span: user-select:noneでキーボードカーソル侵入も完全阻止
-      // (インラインstyle user-select:text を!importantで上書き)
+      // 名前span: 矢印カーソル
       '.mup-hd [class^="mup-pfx-"],.mup-ft [class^="mup-pfx-"]'
-        +'{cursor:default!important;user-select:none!important}',
+        +'{cursor:default!important}',
       // コメントemとバッジだけテキストカーソル・選択可に戻す
       '.mup-hd em,.mup-ft em,.mup-hd .mup-status'
         +'{cursor:text!important;user-select:text!important}'
     ].join('');
     document.head.appendChild(_st);
-    // mousedown: em・バッジ以外はpreventDefault → 名前spanに文字カーソルを出さない
+
+    // ① mousedown キャプチャ: 名前spanへのクリックを阻止
     document.addEventListener('mousedown', function(e) {
-      if (!e.target.closest('.mup-hd, .mup-ft')) return; // ヘッダー・フッター外はスルー
-      if (e.target.closest('em, .mup-status')) return;   // コメント・バッジは通す
-      e.preventDefault(); // 名前span・アイコン・余白への文字カーソルを阻止
+      if (!e.target.closest('.mup-hd, .mup-ft')) return;
+      if (e.target.closest('em, .mup-status')) return; // コメント・バッジは通す
+      e.preventDefault();
     }, true);
+
+    // ② selectionchange 監視: キーボード等でカーソルが名前spanに入ったら即追い出す
+    // user-select:none はカーソル配置を防げないため、入ったら後から移動させる方式
+    document.addEventListener('selectionchange', function() {
+      var sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return;
+      var range = sel.getRangeAt(0);
+      var node = range.startContainer;
+      var el = (node.nodeType === 3) ? node.parentElement : node;
+      // 名前span(mup-pfx-*)の中にいるか判定
+      var nameSpan = null;
+      var cur = el;
+      while (cur && cur !== document.body) {
+        if (cur.className && typeof cur.className === 'string'
+            && cur.className.indexOf('mup-pfx-') === 0) {
+          nameSpan = cur; break;
+        }
+        cur = cur.parentElement;
+      }
+      if (!nameSpan) return;
+      // 名前spanの直後にカーソルを移動
+      var newRange = document.createRange();
+      newRange.setStartAfter(nameSpan);
+      newRange.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+    });
   }
   // \▲[CN=FOLD.CTX.PROTECT]
 
