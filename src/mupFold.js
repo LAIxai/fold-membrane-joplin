@@ -1,5 +1,6 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v2.6
+// \▼[CN=FOLD] // Fold Membrane - click handler v2.7
 // ─── changelog ───────────────────────────────────────
+// v2.7  2026.04.09(木) WYSIWYGプロテクション: 膜全体を矢印カーソル・contenteditable=false・右クリック範囲を.mupに拡大
 // v2.6  2026.04.09(木) 右クリックコンテキストメニュー追加（エディタ切替）
 // v2.5  2026.04.06(月) 同名膜が複数あるときoccurrenceIndexを送信（index.ts側で正しい膜を更新）
 // v2.4  2026.04.06(月) 閉じ膜クリック時のmup特定を親を1段ずつ辿る方式に変更（ネスト膜バグ修正）
@@ -112,19 +113,36 @@ function mupStatusDraw(el, newState) {
 }
 // \▲[CN=FOLD.DRAW]
 
-// \▼[CN=FOLD.CTX] // 右クリックコンテキストメニュー（エディタ切替）
-// 膜ヘッダー(.mup-hd-lbl)上で右クリック → 「エディタ切替」メニューを表示
-// WYSIWYG: Markdownモードへ切替 / Markdownプレビュー: WYSIWYGへ切替
+// \▼[CN=FOLD.CTX] // 右クリックコンテキストメニュー（エディタ切替）+ WYSIWYGプロテクション
 (function() {
-  // メニューDOM生成
+  // \▼[CN=FOLD.CTX.MODE] // モード判定: WYSIWYGはbody.contentEditable==="true"
+  var _isWYSIWYG = document.body.getAttribute('contenteditable') === 'true';
+  // \▲[CN=FOLD.CTX.MODE]
+
+  // \▼[CN=FOLD.CTX.PROTECT] // WYSIWYGプロテクション: 矢印カーソル・誤編集防止
+  if (_isWYSIWYG) {
+    // CSS: 膜全体を矢印カーソルに統一・本文テキスト選択禁止
+    var _st = document.createElement('style');
+    _st.textContent =
+      '.mup,.mup *{cursor:default!important}' +
+      '.mup-bd{user-select:none!important}';
+    document.head.appendChild(_st);
+    // contenteditable=false: TinyMCEがテキストカーソルを膜内に置けないようにする
+    document.querySelectorAll('.mup').forEach(function(el){
+      el.setAttribute('contenteditable','false');
+    });
+  }
+  // \▲[CN=FOLD.CTX.PROTECT]
+
+  // \▼[CN=FOLD.CTX.MENU] // コンテキストメニューDOM
   var _menu = document.createElement('div');
   _menu.id = 'mup-ctx';
   _menu.style.cssText = [
-    'position:fixed', 'z-index:99999', 'display:none',
-    'background:#fff', 'border:1px solid #ccc',
-    'border-radius:5px', 'box-shadow:0 3px 10px rgba(0,0,0,0.18)',
-    'padding:4px 0', 'min-width:130px', 'font-size:13px',
-    'user-select:none', 'cursor:default'
+    'position:fixed','z-index:99999','display:none',
+    'background:#fff','border:1px solid #ccc',
+    'border-radius:5px','box-shadow:0 3px 10px rgba(0,0,0,0.18)',
+    'padding:4px 0','min-width:130px','font-size:13px',
+    'user-select:none','cursor:default'
   ].join(';');
   document.body.appendChild(_menu);
 
@@ -137,38 +155,37 @@ function mupStatusDraw(el, newState) {
     item.onclick = function(){ _hide(); action(); };
     _menu.appendChild(item);
   }
-
   function _show(x, y) {
     _menu.style.display = 'block';
-    // 画面端はみ出し防止
     var mx = Math.min(x, window.innerWidth  - _menu.offsetWidth  - 8);
     var my = Math.min(y, window.innerHeight - _menu.offsetHeight - 8);
     _menu.style.left = Math.max(0, mx) + 'px';
     _menu.style.top  = Math.max(0, my) + 'px';
   }
-
   function _hide() { _menu.style.display = 'none'; }
 
-  // メニュー項目
   _addItem('⇄  エディタ切替', function() {
     webviewApi.postMessage('markMupRenderer', { type: 'mupToggleEditor' });
   });
+  // \▲[CN=FOLD.CTX.MENU]
 
-  // 右クリック: 膜ヘッダー領域なら表示（ブラウザデフォルトメニューを抑制）
+  // \▼[CN=FOLD.CTX.EVENT] // 右クリックイベント
+  // WYSIWYG: 膜全体(.mup) / Markdownプレビュー: ヘッダー・フッターのみ
   document.addEventListener('contextmenu', function(e) {
-    var lbl = e.target.closest('.mup-hd-lbl, .mup-ft');
-    if (!lbl) { _hide(); return; }
+    var target = _isWYSIWYG
+      ? e.target.closest('.mup')
+      : e.target.closest('.mup-hd-lbl, .mup-ft');
+    if (!target) { _hide(); return; }
     e.preventDefault();
     _show(e.clientX, e.clientY);
   });
-
-  // メニュー外クリック・Escapeで閉じる
   document.addEventListener('click', function(e) {
     if (!_menu.contains(e.target)) _hide();
   });
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') _hide();
   });
+  // \▲[CN=FOLD.CTX.EVENT]
 })();
 // \▲[CN=FOLD.CTX]
 
