@@ -1,5 +1,6 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v2.8
+// \▼[CN=FOLD] // Fold Membrane - click handler v2.9
 // ─── changelog ───────────────────────────────────────
+// v2.9  2026.04.09(木) 対象を.mup-hd/.mup-ft行全体に修正（本文エリアは対象外）。WYSIWYGもMarkdownも同一ターゲット
 // v2.8  2026.04.09(木) WYSIWYGプロテクション修正: contenteditable=false→mousedownキャプチャ方式に変更・contextmenuもキャプチャ相+stopImmediatePropagation
 // v2.7  2026.04.09(木) WYSIWYGプロテクション: 膜全体を矢印カーソル・contenteditable=false・右クリック範囲を.mupに拡大
 // v2.6  2026.04.09(木) 右クリックコンテキストメニュー追加（エディタ切替）
@@ -120,23 +121,22 @@ function mupStatusDraw(el, newState) {
   var _isWYSIWYG = document.body.getAttribute('contenteditable') === 'true';
   // \▲[CN=FOLD.CTX.MODE]
 
-  // \▼[CN=FOLD.CTX.PROTECT] // WYSIWYGプロテクション: 矢印カーソル・誤編集防止
+  // \▼[CN=FOLD.CTX.PROTECT] // WYSIWYGプロテクション: ヘッダー・フッター行を矢印カーソル・誤編集防止
+  // 対象: .mup-hd（開始膜行全体）/ .mup-ft（閉じ膜行全体）。本文(.mup-bd)は対象外。
   if (_isWYSIWYG) {
-    // ① CSS: 膜全体を矢印カーソルに統一・本文テキスト選択禁止
+    // ① CSS: ヘッダー・フッター行を矢印カーソルに統一
     var _st = document.createElement('style');
     _st.textContent =
-      '.mup,.mup *{cursor:default!important}' +
-      '.mup-bd{user-select:none!important}';
+      '.mup-hd,.mup-hd *,.mup-ft,.mup-ft *{cursor:default!important}';
     document.head.appendChild(_st);
     // ② mousedown をキャプチャ相で先取り: .mup-ico（折畳みボタン）以外はpreventDefault
-    //    → TinyMCEがテキストカーソルを膜内に置けなくなる
-    //    ※ contenteditable=false は「膜全体が選択状態」になるTinyMCE副作用があるため使わない
+    //    → TinyMCEがヘッダー・フッター内にテキストカーソルを置けなくなる
     document.addEventListener('mousedown', function(e) {
-      if (e.button !== 0) return;             // 左クリック以外はスルー
-      if (e.target.closest('.mup-ico')) return; // 折畳みアイコンはスルー（クリック維持）
-      if (!e.target.closest('.mup')) return;  // 膜外はスルー
-      e.preventDefault(); // TinyMCEのカーソル配置を阻止
-    }, true); // キャプチャ相で先取り
+      if (e.button !== 0) return;
+      if (e.target.closest('.mup-ico')) return; // 折畳みアイコンはスルー
+      if (!e.target.closest('.mup-hd, .mup-ft')) return; // ヘッダー・フッター以外はスルー
+      e.preventDefault();
+    }, true);
   }
   // \▲[CN=FOLD.CTX.PROTECT]
 
@@ -178,15 +178,15 @@ function mupStatusDraw(el, newState) {
   // \▼[CN=FOLD.CTX.EVENT] // 右クリックイベント
   // WYSIWYG: 膜全体(.mup) / Markdownプレビュー: ヘッダー・フッターのみ
   // キャプチャ相(true)で先取り → TinyMCEのcontextmenuを完全抑制
+  // WYSIWYG・Markdown共に .mup-hd / .mup-ft 行全体が対象
+  // キャプチャ相(true) + stopImmediatePropagation でTinyMCEより先に処理
   document.addEventListener('contextmenu', function(e) {
-    var target = _isWYSIWYG
-      ? e.target.closest('.mup')
-      : e.target.closest('.mup-hd-lbl, .mup-ft');
+    var target = e.target.closest('.mup-hd, .mup-ft');
     if (!target) { _hide(); return; }
     e.preventDefault();
-    e.stopImmediatePropagation(); // TinyMCEのコンテキストメニューを完全抑制
+    e.stopImmediatePropagation();
     _show(e.clientX, e.clientY);
-  }, true); // キャプチャ相
+  }, true);
   document.addEventListener('click', function(e) {
     if (!_menu.contains(e.target)) _hide();
   });
