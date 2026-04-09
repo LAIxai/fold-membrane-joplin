@@ -1,5 +1,6 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v3.6
 // ─── changelog ───────────────────────────────────────
+// v3.8  2026.04.09(木) _isWYSIWYG変数の宣言漏れを修正（v3.5で消えてReferenceError→IIFE全壊）
 // v3.7  2026.04.09(木) mouseup防止を削除・右クリックはbutton!==0でスルー。_ctxSelectorを単純化
 // v3.6  2026.04.09(木) ラベルをWYSIWYG/プレビューで出し分け。名前span右クリックでメニュー表示。「名前をコピー」追加（mouseup追加が原因でcontextmenu不発）
 // v3.5  2026.04.09(木) renderer側で全名前spanにclass=mup-name付与。mousedown/up+selectionchange三段構え
@@ -125,6 +126,7 @@ function mupStatusDraw(el, newState) {
 
 // \▼[CN=FOLD.CTX] // 右クリックコンテキストメニュー（エディタ切替）+ 名前部分プロテクション
 (function() {
+  var _isWYSIWYG = document.body.getAttribute('contenteditable') === 'true';
 
   // \▼[CN=FOLD.CTX.PROTECT] // WYSIWYG: 名前span($...$部分)のみ矢印カーソル・編集阻止
   // .mup-hd/.mup-ft 内で em(コメント) と .mup-status(バッジ) は編集可のままにする
