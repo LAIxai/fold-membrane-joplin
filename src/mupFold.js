@@ -1,6 +1,7 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v3.6
 // ─── changelog ───────────────────────────────────────
-// v3.6  2026.04.09(木) ラベルをWYSIWYG/プレビューで出し分け。名前span右クリックでメニュー表示。「名前をコピー」追加
+// v3.7  2026.04.09(木) mouseup防止を削除・右クリックはbutton!==0でスルー。_ctxSelectorを単純化
+// v3.6  2026.04.09(木) ラベルをWYSIWYG/プレビューで出し分け。名前span右クリックでメニュー表示。「名前をコピー」追加（mouseup追加が原因でcontextmenu不発）
 // v3.5  2026.04.09(木) renderer側で全名前spanにclass=mup-name付与。mousedown/up+selectionchange三段構え
 // v3.4  2026.04.09(木) selectionchange監視で名前span侵入カーソルを即座に追い出す（class未付与で不発）
 // v3.3  2026.04.09(木) 名前spanにuser-select:none!importantを追加（カーソル阻止不完全）
@@ -147,12 +148,12 @@ function mupStatusDraw(el, newState) {
       return true; // 名前span・アイコン・余白 = 阻止対象
     }
 
-    // ① mousedown/mouseup キャプチャ: クリックによるカーソル配置を阻止
-    ['mousedown', 'mouseup'].forEach(function(evt) {
-      document.addEventListener(evt, function(e) {
-        if (_inNameZone(e.target)) e.preventDefault();
-      }, true);
-    });
+    // ① mousedown キャプチャ: 左クリックによるカーソル配置を阻止
+    // 右クリック(button!==0)はスルー → contextmenuイベントが正常に発火する
+    document.addEventListener('mousedown', function(e) {
+      if (e.button !== 0) return;
+      if (_inNameZone(e.target)) e.preventDefault();
+    }, true);
 
     // ② selectionchange 監視: キーボードナビで名前spanに入ったら追い出す
     // .mup-name が正しく付与されているので closest('.mup-name') で確実に検知できる
@@ -237,12 +238,10 @@ function mupStatusDraw(el, newState) {
   // \▲[CN=FOLD.CTX.MENU]
 
   // \▼[CN=FOLD.CTX.EVENT] // 右クリックイベント
-  // WYSIWYG: .mup-ico と .mup-name（名前span）の両方を対象
-  // Markdownプレビュー: .mup-ico のみ
+  // 対象: .mup-ico と .mup-name — WYSIWYG・Markdownプレビュー共通
   // キャプチャ相(true) + stopImmediatePropagation でTinyMCEのメニューを完全抑制
-  var _ctxSelector = _isWYSIWYG ? '.mup-ico, .mup-name' : '.mup-ico';
   document.addEventListener('contextmenu', function(e) {
-    var target = e.target.closest(_ctxSelector);
+    var target = e.target.closest('.mup-ico, .mup-name');
     if (!target) { _hide(); return; }
     e.preventDefault();
     e.stopImmediatePropagation();
