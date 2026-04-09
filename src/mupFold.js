@@ -1,5 +1,6 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v4.1
+// \▼[CN=FOLD] // Fold Membrane - click handler v4.2
 // ─── changelog ───────────────────────────────────────
+// v4.2  2026.04.10(金) 🟢消えるバグ修正: _activeCN+MutationObserverでDOM再構築後に復元。ヘッダー全域クリックに対応
 // v4.1  2026.04.10(金) 🟢をクリック/展開/メニュー時に付与に変更。selectionchange方式廃止（ネスト2重バグ解消）
 // v4.0  2026.04.10(金) 🟢アクティブ膜マーク: WYSIWYG内でカーソルが入っている膜にdata-mup-active→CSS::afterで🟢表示
 // v3.9  2026.04.09(木) CNアンカースクロール: エディタ切替時に対象膜のCNを記録→WYSIWYG起動後にscrollIntoView
@@ -27,16 +28,38 @@
 
 // \▼[CN=FOLD.ACTIVE] // アクティブ膜管理（クリック/展開/メニュー時に🟢付与）
 // 最後に操作した膜が1つだけ data-mup-active="true" を持つ。
+// _activeCN: DOM再構築後にMutationObserverで復元するためCN文字列も保持する。
 // mupStyle.css の > .mup-hd .mup-status::after でネスト膜には届かない。
+var _activeCN = null;
+
 function _setActiveMup(mupEl) {
   var prev = document.querySelector('.mup[data-mup-active="true"]');
   if (prev && prev !== mupEl) prev.removeAttribute('data-mup-active');
+  _activeCN = mupEl ? mupEl.getAttribute('data-mup-cn') : null;
   if (mupEl) mupEl.setAttribute('data-mup-active', 'true');
 }
+
+// DOM再構築後（Joplinのnote更新による再レンダリング）にアクティブ状態を復元
+// data.put → Joplin再レンダリング → DOMが作り直され data-mup-active が消える問題の対策
+;(new MutationObserver(function() {
+  if (!_activeCN) return;
+  // ":not([data-mup-active])" でまだ未付与の場合だけ処理（無限ループ防止）
+  var el = document.querySelector('.mup[data-mup-cn="' + _activeCN + '"]:not([data-mup-active])');
+  if (el) el.setAttribute('data-mup-active', 'true');
+})).observe(document.body, { childList: true, subtree: true });
 // \▲[CN=FOLD.ACTIVE]
 
 // \▼[CN=FOLD.CLICK] // クリックイベント
 document.addEventListener('click', function(e) {
+
+  // \▼[CN=FOLD.CLICK.HEADER] // ヘッダー・フッター全域クリック → アクティブ設定
+  // .mup-ico のみでなく em(コメント)・.mup-name・余白すべてのクリックで🟢を付与
+  var hdFt = e.target.closest('.mup-hd, .mup-ft');
+  if (hdFt) {
+    var mupFromHd = hdFt.closest('.mup');
+    if (mupFromHd) _setActiveMup(mupFromHd);
+  }
+  // \▲[CN=FOLD.CLICK.HEADER]
 
   // \▼[CN=FOLD.CLICK.BOOKMARK] // 🔖しおりボタン: クリック→エディタ切替
   var bm = e.target.closest('.mup-bookmark');
@@ -66,9 +89,6 @@ document.addEventListener('click', function(e) {
   // \▼[CN=FOLD.CLICK.LOCK] // ⊘ ロック確認
   if (mup.getAttribute('data-mup-locked') === 'true') return;
   // \▲[CN=FOLD.CLICK.LOCK]
-
-  // アイコンクリックした膜を🟢アクティブに
-  _setActiveMup(mup);
 
   // \▼[CN=FOLD.CLICK.ELEMENTS] // 要素取得
   var hd   = mup.querySelector('.mup-hd');
