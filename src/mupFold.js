@@ -1,5 +1,6 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v2.9
+// \▼[CN=FOLD] // Fold Membrane - click handler v3.0
 // ─── changelog ───────────────────────────────────────
+// v3.0  2026.04.09(木) mousedown保護: button判定を除去（右クリックも含む全ボタンで文字カーソル阻止）
 // v2.9  2026.04.09(木) 対象を.mup-hd/.mup-ft行全体に修正（本文エリアは対象外）。WYSIWYGもMarkdownも同一ターゲット
 // v2.8  2026.04.09(木) WYSIWYGプロテクション修正: contenteditable=false→mousedownキャプチャ方式に変更・contextmenuもキャプチャ相+stopImmediatePropagation
 // v2.7  2026.04.09(木) WYSIWYGプロテクション: 膜全体を矢印カーソル・contenteditable=false・右クリック範囲を.mupに拡大
@@ -132,10 +133,9 @@ function mupStatusDraw(el, newState) {
     // ② mousedown をキャプチャ相で先取り: .mup-ico（折畳みボタン）以外はpreventDefault
     //    → TinyMCEがヘッダー・フッター内にテキストカーソルを置けなくなる
     document.addEventListener('mousedown', function(e) {
-      if (e.button !== 0) return;
       if (e.target.closest('.mup-ico')) return; // 折畳みアイコンはスルー
       if (!e.target.closest('.mup-hd, .mup-ft')) return; // ヘッダー・フッター以外はスルー
-      e.preventDefault();
+      e.preventDefault(); // 左右どちらのクリックも文字カーソル配置を阻止
     }, true);
   }
   // \▲[CN=FOLD.CTX.PROTECT]
