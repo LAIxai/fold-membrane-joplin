@@ -1,6 +1,7 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v3.4
+// \▼[CN=FOLD] // Fold Membrane - click handler v3.5
 // ─── changelog ───────────────────────────────────────
-// v3.4  2026.04.09(木) selectionchange監視で名前span侵入カーソルを即座に追い出す
+// v3.5  2026.04.09(木) renderer側で全名前spanにclass=mup-name付与。mousedown/up+selectionchange三段構え
+// v3.4  2026.04.09(木) selectionchange監視で名前span侵入カーソルを即座に追い出す（class未付与で不発）
 // v3.3  2026.04.09(木) 名前spanにuser-select:none!importantを追加（カーソル阻止不完全）
 // v3.2  2026.04.09(木) 名前span($...$部分)のみ矢印+編集阻止。//コメント・バッジは編集可
 // v3.1  2026.04.09(木) WYSIWYGプロテクション全廃。右クリックメニュー対象を.mup-icoのみに限定
@@ -130,44 +131,49 @@ function mupStatusDraw(el, newState) {
     _st.textContent = [
       // ヘッダー・フッター全体はデフォルト矢印
       '.mup-hd,.mup-ft{cursor:default!important}',
-      // 名前span: 矢印カーソル
-      '.mup-hd [class^="mup-pfx-"],.mup-ft [class^="mup-pfx-"]'
-        +'{cursor:default!important}',
+      // 名前span(.mup-name): 矢印カーソル・選択不可
+      '.mup-name{cursor:default!important;user-select:none!important}',
       // コメントemとバッジだけテキストカーソル・選択可に戻す
       '.mup-hd em,.mup-ft em,.mup-hd .mup-status'
         +'{cursor:text!important;user-select:text!important}'
     ].join('');
     document.head.appendChild(_st);
 
-    // ① mousedown キャプチャ: 名前spanへのクリックを阻止
-    document.addEventListener('mousedown', function(e) {
-      if (!e.target.closest('.mup-hd, .mup-ft')) return;
-      if (e.target.closest('em, .mup-status')) return; // コメント・バッジは通す
-      e.preventDefault();
-    }, true);
+    // 編集可ゾーン(em, .mup-status)以外への操作を阻止するヘルパー
+    function _inNameZone(target) {
+      if (!target.closest('.mup-hd, .mup-ft')) return false; // ヘッダー・フッター外
+      if (target.closest('em, .mup-status')) return false;   // 編集可ゾーンはスルー
+      return true; // 名前span・アイコン・余白 = 阻止対象
+    }
 
-    // ② selectionchange 監視: キーボード等でカーソルが名前spanに入ったら即追い出す
-    // user-select:none はカーソル配置を防げないため、入ったら後から移動させる方式
+    // ① mousedown/mouseup キャプチャ: クリックによるカーソル配置を阻止
+    ['mousedown', 'mouseup'].forEach(function(evt) {
+      document.addEventListener(evt, function(e) {
+        if (_inNameZone(e.target)) e.preventDefault();
+      }, true);
+    });
+
+    // ② selectionchange 監視: キーボードナビで名前spanに入ったら追い出す
+    // .mup-name が正しく付与されているので closest('.mup-name') で確実に検知できる
     document.addEventListener('selectionchange', function() {
       var sel = window.getSelection();
       if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return;
       var range = sel.getRangeAt(0);
       var node = range.startContainer;
       var el = (node.nodeType === 3) ? node.parentElement : node;
-      // 名前span(mup-pfx-*)の中にいるか判定
-      var nameSpan = null;
-      var cur = el;
-      while (cur && cur !== document.body) {
-        if (cur.className && typeof cur.className === 'string'
-            && cur.className.indexOf('mup-pfx-') === 0) {
-          nameSpan = cur; break;
-        }
-        cur = cur.parentElement;
-      }
-      if (!nameSpan) return;
-      // 名前spanの直後にカーソルを移動
+      if (!el.closest('.mup-hd, .mup-ft')) return;  // ヘッダー・フッター外はスルー
+      if (el.closest('em, .mup-status')) return;     // 編集可ゾーンはスルー
+      // 名前span・アイコン・余白 → emの先頭へ追い出す
+      var hd = el.closest('.mup-hd, .mup-ft');
+      var em = hd ? hd.querySelector('em') : null;
       var newRange = document.createRange();
-      newRange.setStartAfter(nameSpan);
+      if (em && em.firstChild) {
+        newRange.setStart(em.firstChild, 0);
+      } else if (em) {
+        newRange.setStart(em, 0);
+      } else {
+        newRange.setStartAfter(hd);
+      }
       newRange.collapse(true);
       sel.removeAllRanges();
       sel.addRange(newRange);

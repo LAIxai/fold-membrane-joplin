@@ -24,6 +24,7 @@
  *                空膜=[🛒]、リンクのみ=⇄[🛒]/⇒[🛒]、中身+リンク=[⊖N] ⇄⇒ を表示。
  *          v5.7: RE_LINK_ME を /Me⇒|⇒Me/ に拡張。
  *                Me⇒{B}（自膜→先）・{A}⇒Me（他→自膜）も ⇒ アイコン表示対象に。
+ *          v5.9: 全名前spanにclass="mup-name"を付与。cursor:default化。mupFoldのプロテクション用。
  *          v5.8: 状態インジケーター（🛒/⇄/⇒）をDOM要素→data-mup-state属性+CSS::afterに変更。
  *                TinyMCEがシリアライズしても本文汚染ゼロ。mupStyle.css v1.2対応。
  * @author  俊克 + Claude (Anthropic)
@@ -179,7 +180,7 @@ function buildMupHtmlMap(blocks, lines){
         +'<div class="mup-hd" style="padding:4px 10px;">'
         +'<span class="mup-hd-lbl" style="display:inline-flex;align-items:center;gap:2px;user-select:none;"'+mupStateAttr+'>'
         +'<span class="mup-ico" style="color:'+col+';font-size:0.75em;cursor:default">'+ico+'</span>'
-        +'<span class="mup-pfx-'+escH(b.pfx)+'" style="font-size:'+hfs+';font-weight:bold;margin:0;cursor:text;user-select:text"> '+escH(cn)+'</span>'
+        +'<span class="mup-name mup-pfx-'+escH(b.pfx)+'" style="font-size:'+hfs+';font-weight:bold;margin:0;cursor:default"> '+escH(cn)+'</span>'
         +(comment?' <em style="color:#555;cursor:text;user-select:text"> // '+comment+'</em>':'')
         +statusHtml
         +'</span>'
@@ -191,7 +192,7 @@ function buildMupHtmlMap(blocks, lines){
         +'<div class="mup-hd" style="padding:3px 8px;font-size:0.85em;">'
         +'<span class="mup-hd-lbl" style="display:inline-flex;align-items:center;gap:2px;background:#f8f8f8;padding:1px 6px;border-radius:3px;user-select:none;"'+mupStateAttr+'>'
         +'<span class="mup-ico" style="color:'+col+';cursor:default">'+ico+'</span>'
-        +'<span style="font-family:monospace;color:#888;cursor:text;user-select:text"> '+escH(cn)+'</span>'
+        +'<span class="mup-name" style="font-family:monospace;color:#888;cursor:default"> '+escH(cn)+'</span>'
         +(comment?' <em style="color:#555;cursor:text;user-select:text"> // '+comment+'</em>':'')
         +statusHtml
         +'</span>'
@@ -208,7 +209,7 @@ function buildMupHtmlMap(blocks, lines){
       map[b.endLine]='<div class="mup-ft" style="padding:2px 8px;font-size:0.8em;color:'+col+';opacity:0.7">'
         +'<span style="display:inline-flex;align-items:center;gap:2px;background:#f8f8f8;padding:1px 6px;border-radius:3px;user-select:none;">'
         +'<span class="mup-ico" style="cursor:default">'+csym+'</span>'
-        +'<span class="mup-pfx-'+escH(b.pfx)+'" style="font-family:monospace;color:#aaa;cursor:text;user-select:text"> '+escH(cn)+'</span>'
+        +'<span class="mup-name mup-pfx-'+escH(b.pfx)+'" style="font-family:monospace;color:#aaa;cursor:default"> '+escH(cn)+'</span>'
         +'</span>'
         +'</div>'
         +'</div>'  // mup-bd
