@@ -211,7 +211,7 @@ function mupStatusDraw(el, newState) {
   }
   function _hide() { _menu.style.display = 'none'; }
 
-  _addItem('⇄  エディタ切替', function() {
+  _addItem('⇄ エディタ切替（名前の編集）', function() {
     webviewApi.postMessage('markMupRenderer', { type: 'mupToggleEditor' });
   });
   // \▲[CN=FOLD.CTX.MENU]
