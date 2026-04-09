@@ -1,7 +1,7 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 5.8
+ * @version 6.0
  * @date    2026.04.09(木)
  * @desc    v2.x-v3.x: 全行自前処理方式（renderMarkMup）。罫線・空行に副作用あり。
  *          v4.0: 全面リアーキテクチャ。膜行・栞行のみプレースホルダーに置換→
@@ -24,6 +24,9 @@
  *                空膜=[🛒]、リンクのみ=⇄[🛒]/⇒[🛒]、中身+リンク=[⊖N] ⇄⇒ を表示。
  *          v5.7: RE_LINK_ME を /Me⇒|⇒Me/ に拡張。
  *                Me⇒{B}（自膜→先）・{A}⇒Me（他→自膜）も ⇒ アイコン表示対象に。
+ *          v6.0: emのcursor:text/user-select:textをインラインから削除。
+ *                プレビューは膜全体でカーソルを矢印に統一。
+ *                WYSIWYGのみmupFold.jsがCSSで cursor:text!important を再適用。
  *          v5.9: 全名前spanにclass="mup-name"を付与。cursor:default化。mupFoldのプロテクション用。
  *          v5.8: 状態インジケーター（🛒/⇄/⇒）をDOM要素→data-mup-state属性+CSS::afterに変更。
  *                TinyMCEがシリアライズしても本文汚染ゼロ。mupStyle.css v1.2対応。
@@ -181,7 +184,7 @@ function buildMupHtmlMap(blocks, lines){
         +'<span class="mup-hd-lbl" style="display:inline-flex;align-items:center;gap:2px;user-select:none;"'+mupStateAttr+'>'
         +'<span class="mup-ico" style="color:'+col+';font-size:0.75em;cursor:default">'+ico+'</span>'
         +'<span class="mup-name mup-pfx-'+escH(b.pfx)+'" style="font-size:'+hfs+';font-weight:bold;margin:0;cursor:default"> '+escH(cn)+'</span>'
-        +(comment?' <em style="color:#555;cursor:text;user-select:text"> // '+comment+'</em>':'')
+        +(comment?' <em style="color:#555;"> // '+comment+'</em>':'')
         +statusHtml
         +'</span>'
         +'</div>'
@@ -193,7 +196,7 @@ function buildMupHtmlMap(blocks, lines){
         +'<span class="mup-hd-lbl" style="display:inline-flex;align-items:center;gap:2px;background:#f8f8f8;padding:1px 6px;border-radius:3px;user-select:none;"'+mupStateAttr+'>'
         +'<span class="mup-ico" style="color:'+col+';cursor:default">'+ico+'</span>'
         +'<span class="mup-name" style="font-family:monospace;color:#888;cursor:default"> '+escH(cn)+'</span>'
-        +(comment?' <em style="color:#555;cursor:text;user-select:text"> // '+comment+'</em>':'')
+        +(comment?' <em style="color:#555;"> // '+comment+'</em>':'')
         +statusHtml
         +'</span>'
         +'</div>'
