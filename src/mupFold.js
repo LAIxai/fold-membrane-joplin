@@ -1,5 +1,7 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v4.8
+// \▼[CN=FOLD] // Fold Membrane - click handler v4.9
 // ─── changelog ───────────────────────────────────────
+// v4.9  2026.04.10(金) バグ#2修正: mupInitialScrollToCnを削除→mupScrollToCn→CodeMirror移動→Sync Scrollがプレビューを引きずるバグ根絶
+//                      バグ#1修正試み: scrollIntoViewを300ms+1200msの2段構えに（Joplin初期化リセット対策）
 // v4.8  2026.04.10(金) Bug#1修正: FOLD.ACTIVE.INIT にMutationObserver追加→描画後のdata-mup-activeを確実に検出+自動スクロール
 //                      Bug#2修正: _show()でTinyMCEのbody置換で消えた_menuを再アタッチ
 // v4.7  2026.04.10(金) 🟢永続化: Markdownモードでクリック→mupSetActive送信→index.tsがノートソースに🟢書込み。起動時data-mup-activeで復元
@@ -77,8 +79,9 @@ function _setActiveMup(mupEl) {
 // markdownItRendererがdata-mup-active="true"を付加→mupFoldが読んでhead styleを設定。
 // WYSIWYGでは属性を即削除しTinyMCEシリアライズを防ぐ（head styleのみで表示）。
 // v4.8: MutationObserverで描画後のdata-mup-activeを確実に検出（タイムアウト1発は不確実→廃止）
-//       data-mup-active検出後にscrollIntoView→Joplin再起動時もアクティブ膜位置を復元。
-//       MarkdownモードのみmupInitialScrollToCnを送信→index.tsがCodeMirror左ペインを同期。
+// v4.9: mupInitialScrollToCn送信を削除
+//       理由: mupScrollToCn→CodeMirror移動→JoplinSync Scrollがプレビューを別位置に引きずる（バグ#2）
+//       Markdownモードは300ms+1200msの2段scrollIntoViewでJoplin初期化リセットに対抗（バグ#1）
 (function() {
   var _initDone = false;
   var _isWYSIWYG_init = document.body.getAttribute('contenteditable') === 'true';
@@ -93,15 +96,15 @@ function _setActiveMup(mupEl) {
     _setActiveMup(initEl);
     // 自動スクロール（再起動時にアクティブ膜位置へ）
     var capturedEl = initEl;
-    var capturedCn = _activeCN;
     setTimeout(function() {
       capturedEl.scrollIntoView({ behavior: 'instant', block: 'center' });
     }, 300);
-    // Markdownモードのみ: CodeMirror左ペインも同期（Sync Scroll基準点を合わせる）
-    if (!_isWYSIWYG_init && capturedCn) {
+    // Markdownモードのみ: Joplinの初期化スクロールリセット対策として遅延2発目
+    // （mupInitialScrollToCnは送信しない: CodeMirror移動→Sync Scrollがプレビューを引きずるバグ#2の原因）
+    if (!_isWYSIWYG_init) {
       setTimeout(function() {
-        webviewApi.postMessage('markMupRenderer', { type: 'mupInitialScrollToCn', cn: capturedCn });
-      }, 600);
+        capturedEl.scrollIntoView({ behavior: 'instant', block: 'center' });
+      }, 1200);
     }
   }
 

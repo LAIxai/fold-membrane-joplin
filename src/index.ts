@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.40
+ * @version 8.41
  * @date    2026.04.10(金)
  * @author  俊克 + Claude (Anthropic)
  * @desc
