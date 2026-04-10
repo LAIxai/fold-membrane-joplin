@@ -1,5 +1,6 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v4.5
+// \▼[CN=FOLD] // Fold Membrane - click handler v4.6
 // ─── changelog ───────────────────────────────────────
+// v4.6  2026.04.10(金) WYSIWYG→Markdown方向のスクロール復元: MutationObserver+初回タイムアウトで対応
 // v4.5  2026.04.10(金) mceAddStyleSheet廃止: bookmarkCSSを_stに統合→スクロール先頭バグ根絶。横取りを400ms1発に簡略化
 // v4.4  2026.04.10(金) スクロール横取り: 400ms/2000ms/5000ms/7000msの4段発火。ユーザー操作で即停止
 // v4.3  2026.04.10(金) 🟢を<head>動的<style>方式に刷新。TinyMCEのbodyに属性不要→シリアライズ汚染・ループ根絶
@@ -311,21 +312,54 @@ function _findNearestVisibleMup() {
   });
   // \▲[CN=FOLD.CTX.MENU]
 
-  // \▼[CN=FOLD.CTX.SCROLL] // WYSIWYG起動時: スクロールターゲット膜へ自動スクロール
-  // Markdown→WYSIWYG切替後、index.tsが保持していたCNアンカーを照会しscrollIntoViewする。
-  // 【根本修正 v4.5】スクロール先頭の真因はmceAddStyleSheetがTinyMCEフォーカスを引いていたこと。
-  // mceAddStyleSheetをindex.tsから廃止し_stに統合→先頭戻りが発生しなくなった。
-  // 横取りは400ms1発のみに簡略化（多段不要）。
+  // \▼[CN=FOLD.CTX.SCROLL] // エディタ切替後: スクロールターゲット膜へ自動スクロール
+  // 両方向（Markdown→WYSIWYG / WYSIWYG→Markdown）対応（v4.6〜）
+  // index.tsが保持していたCNアンカーを mupGetScrollTarget で照会しscrollIntoViewする。
+
+  function _scrollToCn(cn) {
+    var el = document.querySelector('.mup[data-mup-cn="' + cn + '"]');
+    if (el) el.scrollIntoView({ behavior: 'instant', block: 'center' });
+  }
+
   if (_isWYSIWYG) {
+    // ── Markdown→WYSIWYG: TinyMCEが起動してDOMが構築された後にスクロール ──
+    // 【v4.5】mceAddStyleSheetを廃止したのでスクロール先頭戻りが根絶。400ms1発で十分。
     webviewApi.postMessage('markMupRenderer', { type: 'mupGetScrollTarget' })
       .then(function(res) {
         if (!res || !res.cn) return;
-        var _cn = res.cn;
-        setTimeout(function() {
-          var el = document.querySelector('.mup[data-mup-cn="' + _cn + '"]');
-          if (el) el.scrollIntoView({ behavior: 'instant', block: 'center' });
-        }, 400);
+        setTimeout(function() { _scrollToCn(res.cn); }, 400);
       });
+
+  } else {
+    // ── WYSIWYG→Markdown: Markdownプレビューはpersistentなので再起動しない。
+    // MutationObserverで.mup要素の追加（=ノート再レンダリング）を検知→アンカー照会。
+    // ①初回タイムアウト（webviewがfresh startのケースに備える）
+    // ②MutationObserver（persistentケース: モード切替後のDOM再構築を検知）
+    function _queryAndScroll() {
+      webviewApi.postMessage('markMupRenderer', { type: 'mupGetScrollTarget' })
+        .then(function(res) {
+          if (!res || !res.cn) return;
+          _scrollToCn(res.cn);
+        });
+    }
+    // ①
+    setTimeout(_queryAndScroll, 400);
+    // ②
+    var _mdScrollTimer = null;
+    new MutationObserver(function(mutations) {
+      // .mup要素が追加されたとき（=ノート再レンダリング完了）にのみ反応
+      var hasMupAdded = mutations.some(function(m) {
+        return Array.prototype.some.call(m.addedNodes, function(n) {
+          return n.nodeType === 1 && (
+            (n.classList && n.classList.contains('mup')) ||
+            (n.querySelector && n.querySelector('.mup'))
+          );
+        });
+      });
+      if (!hasMupAdded) return;
+      clearTimeout(_mdScrollTimer);
+      _mdScrollTimer = setTimeout(_queryAndScroll, 300);
+    }).observe(document.body, { childList: true, subtree: true });
   }
   // \▲[CN=FOLD.CTX.SCROLL]
 

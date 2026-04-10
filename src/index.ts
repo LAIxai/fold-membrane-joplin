@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.35
+ * @version 8.36
  * @date    2026.04.10(金)
  * @author  俊克 + Claude (Anthropic)
  * @desc
@@ -678,8 +678,10 @@ joplin.plugins.register({
       if (msg.type === 'mupToggleEditor') {
         // \▼[CN=6302_onMessage.TOGGLE_EDITOR.REPAIR] // WYSIWYG→Markdown時: 全破壊を自動復旧
         const wasWYSIWYG = !(await isMarkdownMode());
-        // CN=4721: Markdown→WYSIWYG切替時にアンカーCNを保存（WYSIWYG起動後にscrollIntoView）
-        if (!wasWYSIWYG && msg.cn) _pendingScrollCN = msg.cn;
+        // CN=4721: 両方向でアンカーCNを保存（v0.9.56〜）
+        // Markdown→WYSIWYG: WYSIWYG mupFold.js が起動後に mupGetScrollTarget で照会
+        // WYSIWYG→Markdown: Markdownプレビュー mupFold.js がDOM更新後に照会
+        if (msg.cn) _pendingScrollCN = msg.cn;
         await joplin.commands.execute('toggleEditors');
         if (wasWYSIWYG) {
           // ① Markdownモードに切り替わるまで待つ
