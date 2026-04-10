@@ -1,9 +1,10 @@
 // \▼[CN=EDITOR] // CodeMirrorプラグイン - エディタ同期 v2.1
 /**
  * @file    mupEditor.js
- * @version 2.1
+ * @version 2.2
  * @date    2026.04.10(金)
- * @desc    v2.1: mupScrollToCn追加: WYSIWYG→Markdown切替後にCodeMirrorカーソルをCN行に移動
+ * @desc    v2.2: mupScrollToCnを強化: EditorView.scrollIntoView effect + 300ms再スクロール
+ *          v2.1: mupScrollToCn追加: WYSIWYG→Markdown切替後にCodeMirrorカーソルをCN行に移動
  *          v2.0: 膜名前自動同期機能追加（開始膜↔閉じ膜のCN名をリアルタイム同期）
  *               addExtension + EditorView.updateListenerで実装。
  *               mupUpdateBadge正規表現を$▼m[CN=...]$形式に修正（旧\▼[形式バグ修正）。
@@ -47,6 +48,7 @@ module.exports = {
         // \▼[CN=EDITOR.SCROLL_TO_CN] // mupScrollToCn: WYSIWYG→Markdown切替後にCN行へカーソル+スクロール
         // index.tsがeditor.execCommand('mupScrollToCn', cn)で呼ぶ。
         // CodeMirrorが正しい行にいないとJoplinのSync Scrollがプレビューを引きずるため必須。
+        // scrollIntoView:true と EditorView.scrollIntoView effect の両方を試みる（Joplinバージョン差吸収）。
         editorControl.registerCommand('mupScrollToCn', function(cn) {
           if (!cn) return;
           var editor = editorControl.editor;
@@ -57,10 +59,41 @@ module.exports = {
           for (var i = 1; i <= doc.lines; i++) {
             if (RE.test(doc.line(i).text)) {
               var pos = doc.line(i).from;
+              // CM6: scrollIntoView:true + EditorView.scrollIntoView effect（両方試みる）
+              var effects = [];
+              try {
+                var EV = editor.constructor;
+                if (EV && typeof EV.scrollIntoView === 'function') {
+                  effects = [EV.scrollIntoView(pos, { y: 'center' })];
+                }
+              } catch(e) {}
               editor.dispatch({
                 selection: { anchor: pos, head: pos },
-                scrollIntoView: true
+                scrollIntoView: true,
+                effects: effects.length ? effects : undefined
               });
+              // 念のため300ms後にも再スクロール（他のトランザクションに上書きされた場合の保険）
+              setTimeout(function() {
+                var doc2 = editor.state.doc;
+                for (var j = 1; j <= doc2.lines; j++) {
+                  if (RE.test(doc2.line(j).text)) {
+                    var pos2 = doc2.line(j).from;
+                    var effects2 = [];
+                    try {
+                      var EV2 = editor.constructor;
+                      if (EV2 && typeof EV2.scrollIntoView === 'function') {
+                        effects2 = [EV2.scrollIntoView(pos2, { y: 'center' })];
+                      }
+                    } catch(e) {}
+                    editor.dispatch({
+                      selection: { anchor: pos2, head: pos2 },
+                      scrollIntoView: true,
+                      effects: effects2.length ? effects2 : undefined
+                    });
+                    break;
+                  }
+                }
+              }, 300);
               return;
             }
           }

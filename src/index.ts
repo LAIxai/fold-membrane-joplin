@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.37
+ * @version 8.38
  * @date    2026.04.10(金)
  * @author  俊克 + Claude (Anthropic)
  * @desc
@@ -688,6 +688,17 @@ joplin.plugins.register({
           for (let i = 0; i < 20; i++) {
             await new Promise(r => setTimeout(r, 100));
             if (await isMarkdownMode()) break;
+          }
+          // ①.5 【早期スクロール】モード確認直後にCodeMirrorを対象CN行に移動（v0.9.58〜）
+          // CodeMirrorはモード切替前からノート内容を持つため即時スクロール可能。
+          // 従来のリペア後スクロール（4秒後）では遅すぎてSync Scrollズレが先に発生していた。
+          if (msg.cn) {
+            await new Promise(r => setTimeout(r, 300)); // CodeMirror表示安定待ち
+            try {
+              await joplin.commands.execute('editor.execCommand', {
+                name: 'mupScrollToCn', value: msg.cn,
+              });
+            } catch(_e) {}
           }
           // ② TinyMCE→Markdown変換がDBに届くまでポーリング
           // isMarkdownMode()=true の時点ではDB書き込みが未完了な場合がある
