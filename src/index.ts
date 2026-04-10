@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.32
- * @date    2026.04.09(木)
+ * @version 8.35
+ * @date    2026.04.10(金)
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -893,24 +893,9 @@ joplin.plugins.register({
         }
       }
 
-      // \▼[CN=3291_modeWatcher.WYSIWYG_CSS] // Markdown→WYSIWYG切替: TinyMCEにmupStyleを注入
-      // TinyMCEは独立したレンダリング環境でmupStyle.cssが届かない。
-      // mceAddStyleSheetコマンドでdata: URIのCSSを注入し、data-mup要素をスタイリングする。
-      if (switchedToWYSIWYG) {
-        const mupCss = encodeURIComponent(
-          '[data-mup="bookmark"]{display:inline-flex!important;align-items:center;gap:6px;'
-          + 'padding:3px 12px;background:#fff8e1;border:1px solid #ffcc02;'
-          + 'border-radius:16px;cursor:pointer;font-size:0.85em;'
-          + 'user-select:none;margin:4px 0;color:#5c4a00;}'
-        );
-        try {
-          await joplin.commands.execute('editor.execCommand', {
-            name: 'mceAddStyleSheet',
-            value: `data:text/css,${mupCss}`,
-          });
-        } catch(_e) { /* TinyMCEが未対応の場合は無視 */ }
-      }
-      // \▲[CN=3291_modeWatcher.WYSIWYG_CSS]
+      // [CN=3291 廃止 v0.9.55] mceAddStyleSheetをここで実行するとTinyMCEがフォーカスを取り
+      // カーソルが先頭に移動→スクロールが先頭に戻るバグの根本原因だった。
+      // bookmarkCSSはmupFold.jsのWYSIWYG _stブロックに移動し、mceAddStyleSheet不要になった。
 
       // \▼[CN=9031_modeWatcher.NOTE_SWITCH.REPAIR] // WYSIWYG内ノート切替: updated_time変化時のみ再描画
       // v7.99で無効化していたが v8.17で復活（updated_time比較方式）。

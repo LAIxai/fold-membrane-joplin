@@ -1,5 +1,6 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v4.4
+// \▼[CN=FOLD] // Fold Membrane - click handler v4.5
 // ─── changelog ───────────────────────────────────────
+// v4.5  2026.04.10(金) mceAddStyleSheet廃止: bookmarkCSSを_stに統合→スクロール先頭バグ根絶。横取りを400ms1発に簡略化
 // v4.4  2026.04.10(金) スクロール横取り: 400ms/2000ms/5000ms/7000msの4段発火。ユーザー操作で即停止
 // v4.3  2026.04.10(金) 🟢を<head>動的<style>方式に刷新。TinyMCEのbodyに属性不要→シリアライズ汚染・ループ根絶
 // v4.2  2026.04.10(金) 🟢消えるバグ修正: _activeCN+MutationObserverでDOM再構築後に復元。ヘッダー全域クリックに対応
@@ -203,7 +204,12 @@ function _findNearestVisibleMup() {
       '.mup-name{cursor:default!important;user-select:none!important}',
       // コメントemとバッジだけテキストカーソル・選択可に戻す
       '.mup-hd em,.mup-ft em,.mup-hd .mup-status'
-        +'{cursor:text!important;user-select:text!important}'
+        +'{cursor:text!important;user-select:text!important}',
+      // 🔖しおりボタン（index.tsのmceAddStyleSheetを廃止→ここで注入）
+      '[data-mup="bookmark"]{display:inline-flex!important;align-items:center;gap:6px;'
+        +'padding:3px 12px;background:#fff8e1;border:1px solid #ffcc02;'
+        +'border-radius:16px;cursor:pointer;font-size:0.85em;'
+        +'user-select:none;margin:4px 0;color:#5c4a00;}'
     ].join('');
     document.head.appendChild(_st);
 
@@ -307,33 +313,18 @@ function _findNearestVisibleMup() {
 
   // \▼[CN=FOLD.CTX.SCROLL] // WYSIWYG起動時: スクロールターゲット膜へ自動スクロール
   // Markdown→WYSIWYG切替後、index.tsが保持していたCNアンカーを照会しscrollIntoViewする。
-  // 問題: Joplinが4〜5秒後にカーソルを先頭に置く初期化ルーチンを持ち、スクロールが戻される。
-  // 対策: 複数タイミングで scrollIntoView を再発火し横取り。ユーザー操作があれば即停止。
+  // 【根本修正 v4.5】スクロール先頭の真因はmceAddStyleSheetがTinyMCEフォーカスを引いていたこと。
+  // mceAddStyleSheetをindex.tsから廃止し_stに統合→先頭戻りが発生しなくなった。
+  // 横取りは400ms1発のみに簡略化（多段不要）。
   if (_isWYSIWYG) {
     webviewApi.postMessage('markMupRenderer', { type: 'mupGetScrollTarget' })
       .then(function(res) {
         if (!res || !res.cn) return;
         var _cn = res.cn;
-        var _override = true;  // ユーザーが操作したらfalseに
-
-        // mousedown / keydown でユーザー操作を検知 → 横取り停止
-        var _stopOverride = function() { _override = false; };
-        document.addEventListener('mousedown', _stopOverride, { once: true, capture: true });
-        document.addEventListener('keydown',   _stopOverride, { once: true, capture: true });
-
-        function _scrollToTarget() {
-          if (!_override) return;
+        setTimeout(function() {
           var el = document.querySelector('.mup[data-mup-cn="' + _cn + '"]');
           if (el) el.scrollIntoView({ behavior: 'instant', block: 'center' });
-        }
-
-        // 400ms: 初回（TinyMCEレンダリング後）
-        // 2000ms: 中間
-        // 5000ms: Joplinカーソル初期化（4〜5秒）直後に横取り
-        // 7000ms: 念のため追加（遅めのマシン対応）
-        [400, 2000, 5000, 7000].forEach(function(d) {
-          setTimeout(_scrollToTarget, d);
-        });
+        }, 400);
       });
   }
   // \▲[CN=FOLD.CTX.SCROLL]
