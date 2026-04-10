@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.38
+ * @version 8.39
  * @date    2026.04.10(金)
  * @author  俊克 + Claude (Anthropic)
  * @desc
@@ -659,6 +659,10 @@ joplin.plugins.register({
     // \▼[CN=4721_scrollTarget] // Markdown→WYSIWYG切替時のCNアンカー（スクロール復元用）
     let _pendingScrollCN: string | null = null;
     // \▲[CN=4721_scrollTarget]
+    // \▼[CN=4723_setActive] // 🟢永続化: Markdownモードで膜クリック→ノートソースに🟢書き込み
+    let _pendingActiveCN: string | null | undefined = undefined;
+    let _setActiveDebounce: ReturnType<typeof setTimeout> | null = null;
+    // \▲[CN=4723_setActive]
     await joplin.contentScripts.onMessage('markMupEditor', async (msg: any) => {
       if (msg?.type === 'mupCheckMode' && _modeCheckResolve) {
         const resolve = _modeCheckResolve;
@@ -746,6 +750,37 @@ joplin.plugins.register({
         return { cn };
       }
       // \▲[CN=4721_onMessage.SCROLL_TARGET]
+
+      // \▼[CN=4723_onMessage.SET_ACTIVE] // 🟢永続化: Markdownプレビューで膜クリック→ノートソースに🟢書き込み
+      // mupFold.js(Markdownモード)から送信。WYSIWYGからは送信されない（head styleのみ）。
+      // デバウンス300ms: 連続クリック時は最後のCNだけ書き込む。
+      if (msg.type === 'mupSetActive') {
+        _pendingActiveCN = (msg.cn as string | null) ?? null;
+        if (_setActiveDebounce) clearTimeout(_setActiveDebounce);
+        _setActiveDebounce = setTimeout(async () => {
+          const cn = _pendingActiveCN;
+          _pendingActiveCN = undefined;
+          if (cn === undefined) return;
+          const note = await joplin.workspace.selectedNote();
+          if (!note) return;
+          // 既存の🟢を全削除（全ての開始膜から）
+          let body = note.body.replace(/(\$?[▼▶]m\[(?:CN|H[1-3])=[^\]]+\]\$?)🟢/g, '$1');
+          // 対象CNに🟢を追加
+          if (cn) {
+            const escapedCn = (cn as string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            body = body.replace(
+              new RegExp(`(\\$?[▼▶]m\\[(?:CN|H[1-3])=${escapedCn}\\]\\$?)`),
+              '$1🟢'
+            );
+          }
+          if (body !== note.body) {
+            await joplin.data.put(['notes', note.id], null, { body });
+            try { await joplin.commands.execute('editor.setText', body); } catch(_e) {}
+          }
+        }, 300);
+        return;
+      }
+      // \▲[CN=4723_onMessage.SET_ACTIVE]
 
       if (msg.type !== 'mupToggle') return;
 

@@ -1,5 +1,6 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v4.6
+// \▼[CN=FOLD] // Fold Membrane - click handler v4.7
 // ─── changelog ───────────────────────────────────────
+// v4.7  2026.04.10(金) 🟢永続化: Markdownモードでクリック→mupSetActive送信→index.tsがノートソースに🟢書込み。起動時data-mup-activeで復元
 // v4.6  2026.04.10(金) WYSIWYG→Markdown方向のスクロール復元: MutationObserver+初回タイムアウトで対応
 // v4.5  2026.04.10(金) mceAddStyleSheet廃止: bookmarkCSSを_stに統合→スクロール先頭バグ根絶。横取りを400ms1発に簡略化
 // v4.4  2026.04.10(金) スクロール横取り: 400ms/2000ms/5000ms/7000msの4段発火。ユーザー操作で即停止
@@ -35,6 +36,7 @@
 // 解決策: <head>に動的<style>を注入し、CSSでCN名を直接ターゲット。TinyMCEのbodyには一切触らない。
 // 再レンダリング後もheadの<style>は残るため、🟢は消えない。
 var _activeCN = null;  // スクロールアンカー(v0.9.49)にも兼用
+var _mupSetActiveTimer = null;  // 🟢永続化: mupSetActive送信のデバウンスタイマー
 
 var _activeStyle = (function() {
   var st = document.getElementById('mup-active-style');
@@ -58,8 +60,32 @@ function _setActiveMup(mupEl) {
   } else {
     _activeStyle.textContent = '';
   }
+  // 🟢永続化: Markdownモードのみノートソースに書き込む（WYSIWYGはhead styleのみ）
+  // TinyMCEのbodyを書き換えると汚染ループになるため、WYSIWYGでは送信しない
+  if (_activeCN && document.body.getAttribute('contenteditable') !== 'true') {
+    clearTimeout(_mupSetActiveTimer);
+    _mupSetActiveTimer = setTimeout(function() {
+      webviewApi.postMessage('markMupRenderer', { type: 'mupSetActive', cn: _activeCN });
+    }, 500);
+  }
 }
 // \▲[CN=FOLD.ACTIVE]
+
+// \▼[CN=FOLD.ACTIVE.INIT] // 起動時🟢復元: ソースに🟢があった膜をアクティブに設定
+// markdownItRendererがdata-mup-active="true"を付加→mupFoldが読んでhead styleを設定。
+// WYSIWYGでは属性を即削除しTinyMCEシリアライズを防ぐ（head styleのみで表示）。
+(function() {
+  function _initActiveMup() {
+    var initEl = document.querySelector('.mup[data-mup-active="true"]');
+    if (!initEl) return;
+    initEl.removeAttribute('data-mup-active'); // TinyMCEシリアライズ防止
+    _setActiveMup(initEl);
+  }
+  // WYSIWYG: TinyMCE初期化完了待ち。Markdown: DOM構築完了待ち
+  var delay = document.body.getAttribute('contenteditable') === 'true' ? 600 : 100;
+  setTimeout(_initActiveMup, delay);
+}());
+// \▲[CN=FOLD.ACTIVE.INIT]
 
 // \▼[CN=FOLD.CLICK] // クリックイベント
 document.addEventListener('click', function(e) {

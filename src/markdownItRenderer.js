@@ -1,8 +1,9 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 6.0
- * @date    2026.04.09(木)
+ * @version 6.1
+ * @date    2026.04.10(金)
+ * @desc    v6.1: 🟢永続化対応。ソースに🟢があればdata-mup-active="true"を.mupに付加。
  * @desc    v2.x-v3.x: 全行自前処理方式（renderMarkMup）。罫線・空行に副作用あり。
  *          v4.0: 全面リアーキテクチャ。膜行・栞行のみプレースホルダーに置換→
  *                markdown-itにネイティブ処理を委譲。罫線・空行・太字・リンク等は
@@ -89,8 +90,13 @@ function parseMembranes(lines){
       var raw=rawLine.replace(/\$`?\s*$/,'').trim();
       var parsed=parseStatus(raw);
       var pfx=om[4].trim(),cn=om[5].trim();
+      // 🟢アクティブマーク検出: ]$?の直後・//より前に🟢がある場合
+      var _aft=lines[i].slice(om[0].length);
+      var _si=_aft.indexOf('//');
+      var _bfSl=_si>=0?_aft.slice(0,_si):_aft;
+      var isActive=_bfSl.indexOf('🟢')>=0;
       var b={sym:om[1]||om[2]||om[3],pfx:pfx,cn:cn,startLine:i,endLine:-1,depth:stack.length,
-             comment:parsed.comment,status:parsed.status};
+             comment:parsed.comment,status:parsed.status,active:isActive};
       stack.push(b);blocks.push(b);
     } else if(cm){
       var cpfx=cm[4].trim(),ccn=cm[5].trim();
@@ -179,7 +185,7 @@ function buildMupHtmlMap(blocks, lines){
       var lv=parseInt(hm[1]);
       var hfs=lv<=1?'1.5em':lv===2?'1.25em':'1.1em';
       openHtml='<div class="mup" data-mup-sym="'+escH(isV?'v':'h')+'" data-mup-pfx="'+escH(b.pfx)+'" data-mup-cn="'+escH(cn)+'"'
-        +(isLocked?' data-mup-locked="true"':'')+' style="border-left:4px solid '+col+';margin:8px 0">'
+        +(isLocked?' data-mup-locked="true"':'')+(b.active?' data-mup-active="true"':'')+' style="border-left:4px solid '+col+';margin:8px 0">'
         +'<div class="mup-hd" style="padding:4px 10px;">'
         +'<span class="mup-hd-lbl" style="display:inline-flex;align-items:center;gap:2px;user-select:none;"'+mupStateAttr+'>'
         +'<span class="mup-ico" style="color:'+col+';font-size:0.75em;cursor:default">'+ico+'</span>'
@@ -191,7 +197,7 @@ function buildMupHtmlMap(blocks, lines){
         +'<div class="mup-bd" style="padding:2px 10px;'+bodyDisplay+'">';
     } else {
       openHtml='<div class="mup" data-mup-sym="'+escH(isV?'v':'h')+'" data-mup-pfx="'+escH(b.pfx)+'" data-mup-cn="'+escH(cn)+'"'
-        +(isLocked?' data-mup-locked="true"':'')+' style="border-left:3px solid '+col+';margin:4px 0">'
+        +(isLocked?' data-mup-locked="true"':'')+(b.active?' data-mup-active="true"':'')+' style="border-left:3px solid '+col+';margin:4px 0">'
         +'<div class="mup-hd" style="padding:3px 8px;font-size:0.85em;">'
         +'<span class="mup-hd-lbl" style="display:inline-flex;align-items:center;gap:2px;background:#f8f8f8;padding:1px 6px;border-radius:3px;user-select:none;"'+mupStateAttr+'>'
         +'<span class="mup-ico" style="color:'+col+';cursor:default">'+ico+'</span>'
