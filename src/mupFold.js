@@ -1,5 +1,7 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v4.7
+// \▼[CN=FOLD] // Fold Membrane - click handler v4.8
 // ─── changelog ───────────────────────────────────────
+// v4.8  2026.04.10(金) Bug#1修正: FOLD.ACTIVE.INIT にMutationObserver追加→描画後のdata-mup-activeを確実に検出+自動スクロール
+//                      Bug#2修正: _show()でTinyMCEのbody置換で消えた_menuを再アタッチ
 // v4.7  2026.04.10(金) 🟢永続化: Markdownモードでクリック→mupSetActive送信→index.tsがノートソースに🟢書込み。起動時data-mup-activeで復元
 // v4.6  2026.04.10(金) WYSIWYG→Markdown方向のスクロール復元: MutationObserver+初回タイムアウトで対応
 // v4.5  2026.04.10(金) mceAddStyleSheet廃止: bookmarkCSSを_stに統合→スクロール先頭バグ根絶。横取りを400ms1発に簡略化
@@ -71,19 +73,47 @@ function _setActiveMup(mupEl) {
 }
 // \▲[CN=FOLD.ACTIVE]
 
-// \▼[CN=FOLD.ACTIVE.INIT] // 起動時🟢復元: ソースに🟢があった膜をアクティブに設定
+// \▼[CN=FOLD.ACTIVE.INIT] // 起動時🟢復元: ソースに🟢があった膜をアクティブに設定+自動スクロール
 // markdownItRendererがdata-mup-active="true"を付加→mupFoldが読んでhead styleを設定。
 // WYSIWYGでは属性を即削除しTinyMCEシリアライズを防ぐ（head styleのみで表示）。
+// v4.8: MutationObserverで描画後のdata-mup-activeを確実に検出（タイムアウト1発は不確実→廃止）
+//       data-mup-active検出後にscrollIntoView→Joplin再起動時もアクティブ膜位置を復元。
+//       MarkdownモードのみmupInitialScrollToCnを送信→index.tsがCodeMirror左ペインを同期。
 (function() {
-  function _initActiveMup() {
+  var _initDone = false;
+  var _isWYSIWYG_init = document.body.getAttribute('contenteditable') === 'true';
+
+  function _tryInitActiveMup() {
+    if (_initDone) return;
     var initEl = document.querySelector('.mup[data-mup-active="true"]');
     if (!initEl) return;
+    _initDone = true;
+    _initObs.disconnect();
     initEl.removeAttribute('data-mup-active'); // TinyMCEシリアライズ防止
     _setActiveMup(initEl);
+    // 自動スクロール（再起動時にアクティブ膜位置へ）
+    var capturedEl = initEl;
+    var capturedCn = _activeCN;
+    setTimeout(function() {
+      capturedEl.scrollIntoView({ behavior: 'instant', block: 'center' });
+    }, 300);
+    // Markdownモードのみ: CodeMirror左ペインも同期（Sync Scroll基準点を合わせる）
+    if (!_isWYSIWYG_init && capturedCn) {
+      setTimeout(function() {
+        webviewApi.postMessage('markMupRenderer', { type: 'mupInitialScrollToCn', cn: capturedCn });
+      }, 600);
+    }
   }
-  // WYSIWYG: TinyMCE初期化完了待ち。Markdown: DOM構築完了待ち
-  var delay = document.body.getAttribute('contenteditable') === 'true' ? 600 : 100;
-  setTimeout(_initActiveMup, delay);
+
+  var _initObs = new MutationObserver(function() {
+    if (_initDone) { _initObs.disconnect(); return; }
+    _tryInitActiveMup();
+  });
+  _initObs.observe(document.body, { childList: true, subtree: true });
+  // 30秒後に自動切断（ページが長時間残る場合のメモリリーク防止）
+  setTimeout(function() { _initObs.disconnect(); }, 30000);
+  // DOMが既に構築済みのケース（WYSIWYG初回ロード後など）に備えて即時試行
+  _tryInitActiveMup();
 }());
 // \▲[CN=FOLD.ACTIVE.INIT]
 
@@ -312,6 +342,9 @@ function _findNearestVisibleMup() {
   }
   function _show(x, y, mupEl) {
     _ctxMup = mupEl || null;
+    // Bug#2修正(v4.8): TinyMCEのノート切替でbody.innerHTMLが置換されると_menuがDOMから外れる。
+    // 表示前に再アタッチして確実にメニューを表示する。
+    if (!_menu.parentNode) document.body.appendChild(_menu);
     _menu.style.display = 'block';
     var mx = Math.min(x, window.innerWidth  - _menu.offsetWidth  - 8);
     var my = Math.min(y, window.innerHeight - _menu.offsetHeight - 8);

@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.39
+ * @version 8.40
  * @date    2026.04.10(金)
  * @author  俊克 + Claude (Anthropic)
  * @desc
@@ -781,6 +781,21 @@ joplin.plugins.register({
         return;
       }
       // \▲[CN=4723_onMessage.SET_ACTIVE]
+
+      // \▼[CN=4724_onMessage.INITIAL_SCROLL] // 起動時🟢復元後: CodeMirror左ペインを同期
+      // mupFold.js(Markdownモード)がdata-mup-active検出→scrollIntoView後に送信。
+      // editor.execCommandでmupScrollToCnを呼びCodeMirrorカーソルを正しい行に移動する。
+      if (msg.type === 'mupInitialScrollToCn') {
+        if (msg.cn) {
+          try {
+            await joplin.commands.execute('editor.execCommand', {
+              name: 'mupScrollToCn', args: [msg.cn]
+            });
+          } catch(_e) { /* CodeMirror未初期化の場合は無視 */ }
+        }
+        return;
+      }
+      // \▲[CN=4724_onMessage.INITIAL_SCROLL]
 
       if (msg.type !== 'mupToggle') return;
 
