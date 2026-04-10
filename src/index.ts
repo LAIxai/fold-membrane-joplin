@@ -1,7 +1,7 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.36
+ * @version 8.37
  * @date    2026.04.10(金)
  * @author  俊克 + Claude (Anthropic)
  * @desc
@@ -710,6 +710,18 @@ joplin.plugins.register({
               await joplin.data.put(['notes', note.id], null, { body: repaired });
             }
           }
+          // \▼[CN=4722_editorScroll] // CodeMirrorカーソルを対象CN行に移動
+          // JoplinのSync Scroll（左右同期）がズレているとプレビューが誤った位置に引きずられる。
+          // mupScrollToCnコマンドでCodeMirrorを正しい行に移動→Sync Scrollのズレを根絶。
+          if (msg.cn) {
+            await new Promise(r => setTimeout(r, 200));
+            try {
+              await joplin.commands.execute('editor.execCommand', {
+                name: 'mupScrollToCn', value: msg.cn,
+              });
+            } catch(_e) { /* CodeMirror未初期化の場合は無視 */ }
+          }
+          // \▲[CN=4722_editorScroll]
         }
         // \▲[CN=6302_onMessage.TOGGLE_EDITOR.REPAIR]
         return;

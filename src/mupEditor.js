@@ -1,10 +1,9 @@
-// \▼[CN=EDITOR] // CodeMirrorプラグイン - エディタ同期 v2.0
+// \▼[CN=EDITOR] // CodeMirrorプラグイン - エディタ同期 v2.1
 /**
  * @file    mupEditor.js
- * @version 2.0
- * @date    2026.04.07(火)
- * @desc    v1.2: mupUpdateBadgeにpfx第5引数追加（H1=/H2=/H3=対応）
- *          v1.3: mupCheckModeInsert追加（insertTemplate専用、競合解消）
+ * @version 2.1
+ * @date    2026.04.10(金)
+ * @desc    v2.1: mupScrollToCn追加: WYSIWYG→Markdown切替後にCodeMirrorカーソルをCN行に移動
  *          v2.0: 膜名前自動同期機能追加（開始膜↔閉じ膜のCN名をリアルタイム同期）
  *               addExtension + EditorView.updateListenerで実装。
  *               mupUpdateBadge正規表現を$▼m[CN=...]$形式に修正（旧\▼[形式バグ修正）。
@@ -44,6 +43,29 @@ module.exports = {
           });
         });
         // \▲[CN=EDITOR.INSERT]
+
+        // \▼[CN=EDITOR.SCROLL_TO_CN] // mupScrollToCn: WYSIWYG→Markdown切替後にCN行へカーソル+スクロール
+        // index.tsがeditor.execCommand('mupScrollToCn', cn)で呼ぶ。
+        // CodeMirrorが正しい行にいないとJoplinのSync Scrollがプレビューを引きずるため必須。
+        editorControl.registerCommand('mupScrollToCn', function(cn) {
+          if (!cn) return;
+          var editor = editorControl.editor;
+          if (!editor) return;
+          var doc = editor.state.doc;
+          var escapedCn = String(cn).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          var RE = new RegExp('\\[(?:CN|H[1-3])=' + escapedCn + '\\]');
+          for (var i = 1; i <= doc.lines; i++) {
+            if (RE.test(doc.line(i).text)) {
+              var pos = doc.line(i).from;
+              editor.dispatch({
+                selection: { anchor: pos, head: pos },
+                scrollIntoView: true
+              });
+              return;
+            }
+          }
+        });
+        // \▲[CN=EDITOR.SCROLL_TO_CN]
 
         // \▼[CN=EDITOR.CMD] // mupUpdateBadge: クリック後のバッジをCM6エディタに同期
         editorControl.registerCommand('mupUpdateBadge', function(cn, state, count, exp, pfx) {
