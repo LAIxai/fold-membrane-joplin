@@ -1,5 +1,7 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v5.4
+// \▼[CN=FOLD] // Fold Membrane - click handler v5.5
 // ─── changelog ───────────────────────────────────────
+// v5.5  2026.04.11(土) _scrollToCn後にmupSyncScrollをpostMessage→index.tsがfocusElement+↓キー送信
+//                      webview内JS KeyboardEventはBlink組み込みスクロールに届かない→OS経由に変更
 // v5.4  2026.04.11(土) _triggerSyncScroll: KeyboardEvent(ArrowDown)dispatch方式に変更
 //                      ユーザー発見「Note viewerフォーカス+矢印キー」を再現
 // v5.3  2026.04.11(土) _triggerSyncScroll: scrollBy+WheelEvent+scroll dispatchの3段構え
@@ -388,33 +390,17 @@ function _findNearestVisibleMup() {
   // 両方向（Markdown→WYSIWYG / WYSIWYG→Markdown）対応（v4.6〜）
   // index.tsが保持していたCNアンカーを mupGetScrollTarget で照会しscrollIntoViewする。
 
-  // \▼[CN=FOLD.SYNC] // Sync Scroll起動: Note viewerフォーカス+ArrowKeyでCodeMirrorを同期
-  // ユーザー発見: 「移動→フォーカス→Note viewer → 矢印キー」でSync Scrollが起動する。
-  // webview内からKeyboardEventをdispatchして同じ効果を再現する。
-  // 遅延400ms: モード切替直後はJoplinのlistener設定が完了していないケースがある
-  function _triggerSyncScroll() {
-    setTimeout(function() {
-      // Note viewerにフォーカス相当 + ArrowDownでSync Scroll起動を試みる
-      document.body.focus();
-      try {
-        var ev = new KeyboardEvent('keydown', {
-          key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, which: 40,
-          bubbles: true, cancelable: true, view: window
-        });
-        window.dispatchEvent(ev);
-      } catch(e) {}
-      // フォールバック: scrollByも併用（どちらかが効くことを期待）
-      window.scrollBy(0, 1);
-    }, 400);
-  }
-  // \▲[CN=FOLD.SYNC]
-
   function _scrollToCn(cn) {
     var el = document.querySelector('.mup[data-mup-cn="' + cn + '"]');
     if (!el) return;
     el.scrollIntoView({ behavior: 'instant', block: 'center' });
-    // Markdownモードのみ: Sync Scroll起動→左ペイン(CodeMirror)を同期
-    if (!_isWYSIWYG) _triggerSyncScroll();
+    // Markdownモードのみ: index.ts経由でNote viewerフォーカス+↓キー → CodeMirror同期
+    // (webview内JSのKeyboardEvent dispatchはBlink組み込みスクロールに届かないためOS経由)
+    if (!_isWYSIWYG) {
+      setTimeout(function() {
+        webviewApi.postMessage('markMupRenderer', { type: 'mupSyncScroll' });
+      }, 300);
+    }
   }
 
   if (_isWYSIWYG) {

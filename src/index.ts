@@ -797,6 +797,33 @@ joplin.plugins.register({
       }
       // \▲[CN=4724_onMessage.INITIAL_SCROLL]
 
+      // \▼[CN=4725_onMessage.SYNC_SCROLL] // WYSIWYG→Markdown後: Note viewerフォーカス+↓キーでCodeMirror同期
+      // ユーザー発見: 「移動→フォーカス→Note viewer → 矢印キー」でSync Scrollが起動する。
+      // webview内のJS KeyboardEvent dispatchはBlink組み込みスクロールに届かないため
+      // index.ts経由でjoplin.commands.execute('focusElement')+ osascript ↓キー送信。
+      if (msg.type === 'mupSyncScroll') {
+        try {
+          // Note viewerにフォーカス（複数のコマンドIDを試みる）
+          const focusCmds = ['focusElement', 'focusElementNoteViewer', 'editor.focus'];
+          for (const cmd of focusCmds) {
+            try {
+              await joplin.commands.execute(cmd, 'noteViewer');
+              break;
+            } catch(_e) {
+              try { await joplin.commands.execute(cmd); break; } catch(_e2) {}
+            }
+          }
+        } catch(_e) {}
+        // 少し待ってからosascriptで↓キーを送信
+        await new Promise(r => setTimeout(r, 150));
+        try {
+          const { exec } = require('child_process');
+          exec(`osascript -e 'tell application "System Events" to key code 125'`);
+        } catch(_e) {}
+        return;
+      }
+      // \▲[CN=4725_onMessage.SYNC_SCROLL]
+
       if (msg.type !== 'mupToggle') return;
 
       // \▼[CN=3901_onMessage.ANTISPOOFING] // 成済まし防止: メッセージ受信時点のノートIDを保存
