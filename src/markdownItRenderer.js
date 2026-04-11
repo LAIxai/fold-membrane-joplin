@@ -1,8 +1,9 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 6.1
- * @date    2026.04.10(金)
+ * @version 6.2
+ * @date    2026.04.11(土)
+ * @desc    v6.2: 🔖ボタン廃止。RE_BM/RE_BM_DIV削除。閉じ膜に.mup-statusスパン追加（🟢ボタン化対応）。
  * @desc    v6.1: 🟢永続化対応。ソースに🟢があればdata-mup-active="true"を.mupに付加。
  * @desc    v2.x-v3.x: 全行自前処理方式（renderMarkMup）。罫線・空行に副作用あり。
  *          v4.0: 全面リアーキテクチャ。膜行・栞行のみプレースホルダーに置換→
@@ -40,9 +41,6 @@
 // 正式記法 ▼m[CN=...] と旧記法 $▼_M[CN=...]$ / $M▼[CN=...]$ の全形式を受理（後方互換）
 var RE_O  = /^[ \t]*\$?(?:(▼|▶)m|(▼|▶)_[Mm🄼]|[Mm🄼](▼|▶))\[(CN|H[1-3])=([^\]]+)\]\$?/;
 var RE_C  = /^[ \t]*\$?(?:(▲|◀)m|(▲|◀)_[Mm🄼]|[Mm🄼](▲|◀))\[(CN|H[1-3])=([^\]]+)\]\$?/;
-// RE_BM: bracket形式ラベル=bm[1], 破損形式ラベル=bm[2]
-var RE_BM     = /^[ \t]*(?:\$?(?:🔖m|🔖_[Mm🄼]|[Mm🄼]🔖)\[([^\]]*)\]\$?|🔖 ([^\n$]+))/;
-var RE_BM_DIV = /<(?:div|span)[^>]*data-mup="bookmark"[^>]*data-mup-label="([^"]*)"[^>]*>/;
 var DEPTH_COLORS = ['#9b6fc4','#5588cc','#4aaa6a','#c8a040','#cc7744','#44aacc'];
 var RE_LINK_BIDIR = /⇄\s*\{/;   // 相互リンク記法 ⇄ {CN=...}
 var RE_LINK_ME    = /Me⇒|⇒Me/;  // Me結合記法: {A}⇒Me⇒{B} / Me⇒{B} / {A}⇒Me
@@ -219,6 +217,7 @@ function buildMupHtmlMap(blocks, lines){
         +'<span style="display:inline-flex;align-items:center;gap:2px;background:#f8f8f8;padding:1px 6px;border-radius:3px;user-select:none;">'
         +'<span class="mup-ico" style="cursor:default">'+csym+'</span>'
         +'<span class="mup-name mup-pfx-'+escH(b.pfx)+'" style="font-family:monospace;color:#aaa;cursor:default"> '+escH(cn)+'</span>'
+        +'<span class="mup-status"></span>'
         +'</span>'
         +'</div>'
         +'</div>'  // mup-bd
@@ -244,9 +243,9 @@ module.exports = {
         markdownIt.core.ruler.push('markMup',function(state){
           var src=state.src;
 
-          // 膜ノート検出: ▼m[ / ▶m[ / 🔖m[ の3文字（正式）または旧記法
-          if(src.indexOf('▼m[')<0 && src.indexOf('▶m[')<0 && src.indexOf('🔖m[')<0 &&
-             !/[▼▶▲◀]_[Mm🄼]\[|[Mm🄼][▼▶▲◀]\[|🔖_[Mm🄼]\[|[Mm🄼]🔖\[/.test(src)) return false;
+          // 膜ノート検出: ▼m[ / ▶m[ の2文字（正式）または旧記法
+          if(src.indexOf('▼m[')<0 && src.indexOf('▶m[')<0 &&
+             !/[▼▶▲◀]_[Mm🄼]\[|[Mm🄼][▼▶▲◀]\[/.test(src)) return false;
 
           // \▼[CN=RENDERER.JOPLIN.MARKMUP.PREP] // 前処理・パース（キャッシュ付き）
           var rawLines=src.split('\n');
@@ -254,7 +253,7 @@ module.exports = {
           // → 空膜に中身を書いた瞬間に🛒→カウンター表示が正しく切り替わる
           var mupMembraneParts=[], mupBodyParts=[];
           rawLines.forEach(function(l,i){
-            if(RE_O.test(l)||RE_C.test(l)||RE_BM.test(l)||RE_BM_DIV.test(l)){
+            if(RE_O.test(l)||RE_C.test(l)){
               mupMembraneParts.push(i+':'+l);
             } else {
               var t=l.trim();
@@ -291,24 +290,6 @@ module.exports = {
           blocks.forEach(function(b){
             if(htmlMap[b.startLine]!==undefined) mupLineHtml[b.startLine]=htmlMap[b.startLine];
             if(b.endLine>=0&&htmlMap[b.endLine]!==undefined) mupLineHtml[b.endLine]=htmlMap[b.endLine];
-          });
-
-          // 栞行もマップに追加
-          rawLines.forEach(function(line,i){
-            if(mupLineHtml[i]!==undefined) return;
-            var bmmatch=null;
-            if(RE_BM.test(line)) bmmatch=RE_BM.exec(line);
-            else if(RE_BM_DIV.test(line)) bmmatch=RE_BM_DIV.exec(line);
-            if(bmmatch){
-              var bmlabel=escH(((bmmatch[1]||bmmatch[2]||'bookmark')).trim());
-              mupLineHtml[i]='<div class="mup-bookmark"'
-                +' data-mup="bookmark" data-mup-label="'+bmlabel+'"'
-                +' style="display:inline-flex;align-items:center;gap:6px;'
-                +'padding:3px 12px;background:#fff8e1;border:1px solid #ffcc02;'
-                +'border-radius:16px;cursor:default;font-size:0.85em;'
-                +'user-select:none;margin:4px 0;color:#5c4a00">'
-                +'🔖 '+bmlabel+'</div>';
-            }
           });
 
           // state.tokensを逆順スキャン: 膜行・栞行の paragraph_open+inline+paragraph_close を

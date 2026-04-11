@@ -1,5 +1,8 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v5.5
+// \▼[CN=FOLD] // Fold Membrane - click handler v5.6
 // ─── changelog ───────────────────────────────────────
+// v5.6  2026.04.11(土) 🔖ボタン廃止。🟢をクリック可能なボタンに変更（エディタ切替機能継承）。
+//                      閉じ膜にも🟢表示（markdownItRenderer v6.2で.mup-status追加）。
+//                      FOLD.CLICK.BOOKMARK → FOLD.CLICK.GREEN_BTN に置換。
 // v5.5  2026.04.11(土) _scrollToCn後にmupSyncScrollをpostMessage→index.tsがfocusElement+↓キー送信
 //                      webview内JS KeyboardEventはBlink組み込みスクロールに届かない→OS経由に変更
 // v5.4  2026.04.11(土) _triggerSyncScroll: KeyboardEvent(ArrowDown)dispatch方式に変更
@@ -69,9 +72,15 @@ function _setActiveMup(mupEl) {
   _activeCN = mupEl ? mupEl.getAttribute('data-mup-cn') : null;
   if (_activeCN) {
     // CSS属性セレクターの値は文字列扱いなのでドット等の特殊文字も安全
+    var _esc = _activeCN.replace(/"/g, '\\"');
     _activeStyle.textContent =
-      '.mup[data-mup-cn="' + _activeCN.replace(/"/g, '\\"') + '"]'
-      + ' > .mup-hd .mup-status::after {'
+      // 開始膜・閉じ膜の.mup-status: cursor:pointer（クリック可能であることを示す）
+      '.mup[data-mup-cn="' + _esc + '"] > .mup-hd .mup-status,'
+      + '.mup[data-mup-cn="' + _esc + '"] .mup-ft .mup-status {'
+      + 'cursor:pointer!important}'
+      // 🟢表示: 開始膜と閉じ膜の両方に::afterで表示
+      + '.mup[data-mup-cn="' + _esc + '"] > .mup-hd .mup-status::after,'
+      + '.mup[data-mup-cn="' + _esc + '"] .mup-ft .mup-status::after {'
       + 'content:"🟢";font-size:0.85em;margin-left:3px;vertical-align:middle}';
   } else {
     _activeStyle.textContent = '';
@@ -134,6 +143,7 @@ function _setActiveMup(mupEl) {
 
 // \▼[CN=FOLD.CLICK] // クリックイベント
 document.addEventListener('click', function(e) {
+  var _prevActiveCN = _activeCN; // 🟢ボタン判定用: クリック前のアクティブCNを記録
 
   // \▼[CN=FOLD.CLICK.HEADER] // ヘッダー・フッター全域クリック → アクティブ設定
   // .mup-ico のみでなく em(コメント)・.mup-name・余白すべてのクリックで🟢を付与
@@ -144,16 +154,20 @@ document.addEventListener('click', function(e) {
   }
   // \▲[CN=FOLD.CLICK.HEADER]
 
-  // \▼[CN=FOLD.CLICK.BOOKMARK] // 🔖しおりボタン: クリック→エディタ切替
-  var bm = e.target.closest('.mup-bookmark');
-  if (bm) {
-    // 最後に操作したアクティブ膜のCN→なければビューポート中央の膜をアンカーに
-    var _nearMup  = _findNearestVisibleMup();
-    var _anchorCn = _activeCN || (_nearMup ? _nearMup.getAttribute('data-mup-cn') : null);
-    webviewApi.postMessage('markMupRenderer', { type: 'mupToggleEditor', cn: _anchorCn });
-    return;
+  // \▼[CN=FOLD.CLICK.GREEN_BTN] // 🟢ボタン: アクティブ膜の.mup-statusクリック → エディタ切替
+  // 既にアクティブだった膜の.mup-statusをクリックした時のみ切替（初回クリックはアクティブ化のみ）
+  var statusEl = e.target.closest('.mup-status');
+  if (statusEl) {
+    var mupFromStatus = statusEl.closest('.mup');
+    var cnStatus = mupFromStatus ? mupFromStatus.getAttribute('data-mup-cn') : null;
+    if (cnStatus && cnStatus === _prevActiveCN) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      webviewApi.postMessage('markMupRenderer', { type: 'mupToggleEditor', cn: _prevActiveCN });
+      return;
+    }
   }
-  // \▲[CN=FOLD.CLICK.BOOKMARK]
+  // \▲[CN=FOLD.CLICK.GREEN_BTN]
 
   // \▼[CN=FOLD.CLICK.TARGET] // クリック対象の特定（▼▶▲アイコンのみ）
   var ico0 = e.target.closest('.mup-ico');
@@ -274,14 +288,9 @@ function _findNearestVisibleMup() {
       '.mup-hd,.mup-ft{cursor:default!important}',
       // 名前span(.mup-name): 矢印カーソル・選択不可
       '.mup-name{cursor:default!important;user-select:none!important}',
-      // コメントemとバッジだけテキストカーソル・選択可に戻す
-      '.mup-hd em,.mup-ft em,.mup-hd .mup-status'
-        +'{cursor:text!important;user-select:text!important}',
-      // 🔖しおりボタン（index.tsのmceAddStyleSheetを廃止→ここで注入）
-      '[data-mup="bookmark"]{display:inline-flex!important;align-items:center;gap:6px;'
-        +'padding:3px 12px;background:#fff8e1;border:1px solid #ffcc02;'
-        +'border-radius:16px;cursor:pointer;font-size:0.85em;'
-        +'user-select:none;margin:4px 0;color:#5c4a00;}'
+      // コメントemとバッジだけテキストカーソル・選択可に戻す（🟢アクティブ膜は_activeStyleで上書き）
+      '.mup-hd em,.mup-ft em,.mup-hd .mup-status,.mup-ft .mup-status'
+        +'{cursor:text!important;user-select:text!important}'
     ].join('');
     document.head.appendChild(_st);
 

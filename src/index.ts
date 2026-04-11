@@ -216,7 +216,6 @@
 //   \▼[CN=8530_commands] // コマンド登録  {2384} ⇒ Me ⇒ {3658,4471,9015,5274}
 //     \▼[CN=1849_mupInsertLatexInline.EXEC] // インラインLaTeX挿入
 //     \▼[CN=3726_mupInsertLatexBlock.EXEC] // ブロックLaTeX挿入
-//     \▼[CN=4471_mupInsertBookmark.EXEC] // 🔖しおりボタン挿入  {8530} ⇒ Me ⇒ {5139}
 //     \▼[CN=9015_mupRepairSpan.EXEC] // Repair Membranes  {8530} ⇒ Me ⇒ {9043}
 //     \▼[CN=5274_mupInsertHR.EXEC] // Insert HR ―（Markdown=* * *、WYSIWYG=<hr>HTML貼付け）
 //   \▼[CN=2384_menu] // ツールメニュー登録  ⇒ Me ⇒ {8530_commands}
@@ -240,21 +239,6 @@ function repairMupSpan(body: string): string {
     (_: string, inner: string) => '<' + inner.replace(/&quot;/g, '"').replace(/&amp;/g, '&') + '>'
   );
   // \▲[CN=4821_repairMupSpan.ENTITY_DECODE]
-
-  // \▼[CN=7832_repairMupSpan.BOOKMARK_DIV] // data-mup="bookmark" div/span → \🔖記法に変換（Markdownモード用）
-  // WYSIWYGで挿入されたHTML形式の栞をMarkdown記法に戻す（div/span両対応）
-  // data-mup-dollar="1" があれば $\🔖[label]$ 形式で復元（ドル保護記法を維持）
-  // data-mup-dollarはTinyMCEが消す → class="mup-dollar"で判定（TinyMCEはclassを保持する）
-  const _bm2mup = (_m: string, label: string) => '$🔖m[' + label + ']$';
-  fixed = fixed.replace(
-    /<(?:div|span)[^>]*data-mup="bookmark"[^>]*data-mup-label="([^"]*)"[^>]*>[\s\S]*?<\/(?:div|span)>/g,
-    _bm2mup
-  );
-  fixed = fixed.replace(
-    /<(?:div|span)[^>]*data-mup-label="([^"]*)"[^>]*data-mup="bookmark"[^>]*>[\s\S]*?<\/(?:div|span)>/g,
-    _bm2mup
-  );
-  // \▲[CN=7832_repairMupSpan.BOOKMARK_DIV]
 
   // \▼[CN=5849_repairMupSpan.DOLLARBLOCK] // $$膜ラッパー除去: TinyMCE保護用の$$を解放
   // TinyMCEは$$...$$ブロックを数式ウィジェットとして扱い、内容を一切変換しない。
@@ -677,8 +661,8 @@ joplin.plugins.register({
     await joplin.contentScripts.onMessage('markMupRenderer', async (msg: any) => {
       if (!msg) return;
 
-      // \▼[CN=5139_onMessage.TOGGLE_EDITOR] // 🔖しおりボタン: エディタ切替＋自動復旧
-      // {4896_onMessage, 4471_mupInsertBookmark.EXEC} ⇒ Me ⇒ {9043_repairMupSpan, 2847_isMarkdownMode}
+      // \▼[CN=5139_onMessage.TOGGLE_EDITOR] // 🟢ボタン/膜メニュー: エディタ切替＋自動復旧
+      // {4896_onMessage} ⇒ Me ⇒ {9043_repairMupSpan, 2847_isMarkdownMode}
       if (msg.type === 'mupToggleEditor') {
         // \▼[CN=6302_onMessage.TOGGLE_EDITOR.REPAIR] // WYSIWYG→Markdown時: 全破壊を自動復旧
         const wasWYSIWYG = !(await isMarkdownMode());
@@ -712,15 +696,12 @@ joplin.plugins.register({
             note = await joplin.workspace.selectedNote();
             if (note && (
               note.body.includes('<span') ||
-              /^\\{3}$/m.test(note.body) ||
-              /^🔖 .+$/m.test(note.body)
+              /^\\{3}$/m.test(note.body)
             )) break;
           }
           if (note) {
-            // ③ しおりプレーンテキスト復旧: "🔖 label" → "\🔖[label]"
-            let repaired = note.body.replace(/^🔖 (.+)$/gm, '$🔖m[$1]$');
-            // ④ span破壊・バックスラッシュ増殖・\\\を repairMupSpan で一括修復
-            repaired = repairMupSpan(repaired);
+            // ③ span破壊・バックスラッシュ増殖・\\\を repairMupSpan で一括修復
+            let repaired = repairMupSpan(note.body);
             if (repaired !== note.body) {
               await joplin.data.put(['notes', note.id], null, { body: repaired });
             }
@@ -1294,32 +1275,6 @@ joplin.plugins.register({
     });
 
     await joplin.commands.register({
-      name: 'mupInsertBookmark',
-      label: 'Insert Bookmark 🔖',
-      iconName: 'fas fa-bookmark',
-      execute: async () => {
-        // \▼[CN=4471_mupInsertBookmark.EXEC] // 🔖しおり＆エディタ切替ボタン挿入
-        // {8530_commands} ⇒ Me ⇒ {5139_onMessage.TOGGLE_EDITOR}
-        if (await isMarkdownMode()) {
-          // Markdownモード: 🔖m記法をそのまま挿入（左ペインに表示・右ペインはボタン描画）
-          await insertTemplate('\n$🔖m[Here 🔖!!]$\n');
-        } else {
-          // WYSIWYGモード: $🔖m[label]$プレーンテキストをmceInsertContentで直接挿入
-          // TinyMCEのKaTeXウィジェットとして保護される
-          try {
-            await joplin.commands.execute('editor.execCommand', {
-              name: 'mceInsertContent',
-              value: '$🔖m[Here 🔖!!]$',
-              ui: false,
-            });
-          } catch(e) {
-            await insertTemplate('\n$🔖m[Here 🔖!!]$\n');
-          }
-        }
-        // \▲[CN=4471_mupInsertBookmark.EXEC]
-      },
-    });
-    await joplin.commands.register({
       name: 'mupInsertHR',
       label: 'Insert HR ―',
       iconName: 'fas fa-minus',
@@ -1433,7 +1388,6 @@ joplin.plugins.register({
     await joplin.views.menus.create('mupMenu', 'Fold Membrane', [
       { commandName: 'mupInsertV' },
       { commandName: 'mupInsertH' },
-      { commandName: 'mupInsertBookmark' },
       { commandName: 'mupRepairSpan' },
       { commandName: 'mupRepairEntities' },
       { commandName: 'mupRepairBackslash' },
