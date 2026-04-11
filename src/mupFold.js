@@ -1,5 +1,7 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v5.7
 // ─── changelog ───────────────────────────────────────
+// v5.8  2026.04.11(土) バグ修正2件: ①WYSIWYG時もmupSetActiveを送信(editor.setTextはindex.ts側でスキップ)
+//                      ②入れ子膜の閉じ膜🟢重複: > .mup-bd > .mup-ftでセレクター厳密化
 // v5.7  2026.04.11(土) 🟢ホバー時ツールチップ追加: CSS::beforeでSwitch editor表示（v5.7a: _isWYSIWYGスコープバグ修正）
 // v5.6  2026.04.11(土) 🔖ボタン廃止。🟢をクリック可能なボタンに変更（エディタ切替機能継承）。
 //                      閉じ膜にも🟢表示（markdownItRenderer v6.2で.mup-status追加）。
@@ -77,18 +79,18 @@ function _setActiveMup(mupEl) {
     // _isWYSIWYGは別スコープのため直接参照不可 → bodyのcontenteditable属性で判定
     var _tip = (document.body.getAttribute('contenteditable') === 'true')
       ? 'Switch editor (edit name)' : 'Switch editor';
+    // 閉じ膜は "> .mup-bd > .mup-ft" で直接の子のみ（入れ子膜への🟢重複を防ぐ）
+    var _ftSel = '.mup[data-mup-cn="' + _esc + '"] > .mup-bd > .mup-ft';
+    var _hdSel = '.mup[data-mup-cn="' + _esc + '"] > .mup-hd';
     _activeStyle.textContent =
       // 開始膜・閉じ膜の.mup-status: cursor:pointer + position:relative（ツールチップ基準点）
-      '.mup[data-mup-cn="' + _esc + '"] > .mup-hd .mup-status,'
-      + '.mup[data-mup-cn="' + _esc + '"] .mup-ft .mup-status {'
+      _hdSel + ' .mup-status,' + _ftSel + ' .mup-status {'
       + 'cursor:pointer!important;position:relative}'
       // 🟢表示: 開始膜と閉じ膜の両方に::afterで表示
-      + '.mup[data-mup-cn="' + _esc + '"] > .mup-hd .mup-status::after,'
-      + '.mup[data-mup-cn="' + _esc + '"] .mup-ft .mup-status::after {'
+      + _hdSel + ' .mup-status::after,' + _ftSel + ' .mup-status::after {'
       + 'content:"🟢";font-size:0.85em;margin-left:3px;vertical-align:middle}'
       // ツールチップ: ホバー時に::beforeで表示（::afterは🟢で使用済み）
-      + '.mup[data-mup-cn="' + _esc + '"] > .mup-hd .mup-status:hover::before,'
-      + '.mup[data-mup-cn="' + _esc + '"] .mup-ft .mup-status:hover::before {'
+      + _hdSel + ' .mup-status:hover::before,' + _ftSel + ' .mup-status:hover::before {'
       + 'content:"' + _tip + '";'
       + 'position:absolute;bottom:calc(100% + 5px);left:50%;transform:translateX(-50%);'
       + 'background:#333;color:#fff;padding:3px 9px;border-radius:4px;'
@@ -97,9 +99,9 @@ function _setActiveMup(mupEl) {
   } else {
     _activeStyle.textContent = '';
   }
-  // 🟢永続化: Markdownモードのみノートソースに書き込む（WYSIWYGはhead styleのみ）
-  // TinyMCEのbodyを書き換えると汚染ループになるため、WYSIWYGでは送信しない
-  if (_activeCN && document.body.getAttribute('contenteditable') !== 'true') {
+  // 🟢永続化: 常にノートソースに書き込む（WYSIWYG時はindex.ts側でeditor.setTextをスキップ→TinyMCE汚染防止）
+  // WYSIWYG→Markdown切替後に🟢が消える問題の根本修正（v5.8）
+  if (_activeCN) {
     clearTimeout(_mupSetActiveTimer);
     _mupSetActiveTimer = setTimeout(function() {
       webviewApi.postMessage('markMupRenderer', { type: 'mupSetActive', cn: _activeCN });

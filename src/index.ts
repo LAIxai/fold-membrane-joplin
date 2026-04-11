@@ -756,7 +756,11 @@ joplin.plugins.register({
           }
           if (body !== note.body) {
             await joplin.data.put(['notes', note.id], null, { body });
-            try { await joplin.commands.execute('editor.setText', body); } catch(_e) {}
+            // WYSIWYGモード時はeditor.setTextをスキップ（TinyMCEの再レンダリングループ防止）
+            // Markdownモード時のみCodeMirrorを同期する
+            if (await isMarkdownMode()) {
+              try { await joplin.commands.execute('editor.setText', body); } catch(_e) {}
+            }
           }
         }, 300);
         return;
