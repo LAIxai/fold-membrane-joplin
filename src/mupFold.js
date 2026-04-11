@@ -1,6 +1,6 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v5.7
 // ─── changelog ───────────────────────────────────────
-// v5.7  2026.04.11(土) 🟢ホバー時ツールチップ追加: CSS::beforeでSwitch editor表示
+// v5.7  2026.04.11(土) 🟢ホバー時ツールチップ追加: CSS::beforeでSwitch editor表示（v5.7a: _isWYSIWYGスコープバグ修正）
 // v5.6  2026.04.11(土) 🔖ボタン廃止。🟢をクリック可能なボタンに変更（エディタ切替機能継承）。
 //                      閉じ膜にも🟢表示（markdownItRenderer v6.2で.mup-status追加）。
 //                      FOLD.CLICK.BOOKMARK → FOLD.CLICK.GREEN_BTN に置換。
@@ -74,7 +74,9 @@ function _setActiveMup(mupEl) {
   if (_activeCN) {
     // CSS属性セレクターの値は文字列扱いなのでドット等の特殊文字も安全
     var _esc = _activeCN.replace(/"/g, '\\"');
-    var _tip = _isWYSIWYG ? 'Switch editor (edit name)' : 'Switch editor';
+    // _isWYSIWYGは別スコープのため直接参照不可 → bodyのcontenteditable属性で判定
+    var _tip = (document.body.getAttribute('contenteditable') === 'true')
+      ? 'Switch editor (edit name)' : 'Switch editor';
     _activeStyle.textContent =
       // 開始膜・閉じ膜の.mup-status: cursor:pointer + position:relative（ツールチップ基準点）
       '.mup[data-mup-cn="' + _esc + '"] > .mup-hd .mup-status,'
