@@ -1,5 +1,7 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v4.9
+// \▼[CN=FOLD] // Fold Membrane - click handler v5.0
 // ─── changelog ───────────────────────────────────────
+// v5.0  2026.04.11(土) _scrollToCn後にwindow.scrollBy(0,1)でSync Scroll起動→左ペイン同期
+//                      コンテキストメニューに「🟢 アクティブ膜にスクロール」追加
 // v4.9  2026.04.10(金) バグ#2修正: mupInitialScrollToCnを削除→mupScrollToCn→CodeMirror移動→Sync Scrollがプレビューを引きずるバグ根絶
 //                      バグ#1修正試み: scrollIntoViewを300ms+1200msの2段構えに（Joplin初期化リセット対策）
 // v4.8  2026.04.10(金) Bug#1修正: FOLD.ACTIVE.INIT にMutationObserver追加→描画後のdata-mup-activeを確実に検出+自動スクロール
@@ -365,7 +367,12 @@ function _findNearestVisibleMup() {
       webviewApi.postMessage('markMupRenderer', { type: 'mupToggleEditor', cn: cn });
     }
   );
-  // ② 名前をコピー: data-mup-cn属性からCN名を取得してクリップボードへ
+  // ② 🟢アクティブ膜にスクロール: _activeCNがある時のみ有効
+  // 手動スクロール後に🟢膜位置を見失ったとき、即座に戻る
+  _addItem('🟢 Scroll to active membrane', function() {
+    if (_activeCN) _scrollToCn(_activeCN);
+  });
+  // ③ 名前をコピー: data-mup-cn属性からCN名を取得してクリップボードへ
   _addSep();
   _addItem('📋 名前をコピー', function() {
     var name = _ctxMup ? (_ctxMup.getAttribute('data-mup-cn') || '') : '';
@@ -380,7 +387,14 @@ function _findNearestVisibleMup() {
 
   function _scrollToCn(cn) {
     var el = document.querySelector('.mup[data-mup-cn="' + cn + '"]');
-    if (el) el.scrollIntoView({ behavior: 'instant', block: 'center' });
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'instant', block: 'center' });
+    // v5.0: Sync Scroll起動→左ペイン(CodeMirror)を同期させる
+    // プレビュー側で微小スクロールイベントを発火→JoplinがCodeMirrorを同期
+    // （CodeMirror→プレビュー方向はズレが出るが、プレビュー→CodeMirror方向は正確）
+    if (!_isWYSIWYG) {
+      setTimeout(function() { window.scrollBy(0, 1); }, 150);
+    }
   }
 
   if (_isWYSIWYG) {
