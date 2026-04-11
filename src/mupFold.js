@@ -1,5 +1,7 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v5.1
+// \▼[CN=FOLD] // Fold Membrane - click handler v5.2
 // ─── changelog ───────────────────────────────────────
+// v5.2  2026.04.11(土) FOLD.CTX.SCROLL_MENUをcapture phase化→WYSIWYG対応
+//                      _activeCNがある時のみTinyMCEのメニューを抑制（ない時は通常メニュー）
 // v5.1  2026.04.11(土) バグ修正: contextmenuで_setActiveMupを呼ばない（右クリックで🟢が付くバグ）
 //                      「🟢 Scroll to active membrane」を膜メニューから削除→膜以外の右クリックメニューに移動
 // v5.0  2026.04.11(土) _scrollToCn後にwindow.scrollBy(0,1)でSync Scroll起動→左ペイン同期
@@ -485,21 +487,21 @@ function _findNearestVisibleMup() {
 
   function _hideScrollMenu() { _scrollMenu.style.display = 'none'; }
 
-  // Markdownプレビューのみ: 膜以外の右クリックで表示
-  if (!_isWYSIWYG) {
-    document.addEventListener('contextmenu', function(e) {
-      // 膜アイコン・名前は膜メニューに任せる（capture相で処理済み）
-      if (e.target.closest('.mup-ico, .mup-name')) return;
-      if (!_activeCN) return; // アクティブ膜がない時は何もしない
-      e.preventDefault();
-      if (!_scrollMenu.parentNode) document.body.appendChild(_scrollMenu);
-      _scrollMenu.style.display = 'block';
-      var mx = Math.min(e.clientX, window.innerWidth  - _scrollMenu.offsetWidth  - 8);
-      var my = Math.min(e.clientY, window.innerHeight - _scrollMenu.offsetHeight - 8);
-      _scrollMenu.style.left = Math.max(0, mx) + 'px';
-      _scrollMenu.style.top  = Math.max(0, my) + 'px';
-    });
-  }
+  // 両モード対応: capture phaseで登録→膜以外の右クリックで表示
+  // _activeCNがある時のみ介入（ない時は通常メニュー: TinyMCE or ブラウザ）
+  document.addEventListener('contextmenu', function(e) {
+    // 膜アイコン・名前は膜メニューに任せる（同じcapture相で処理済み）
+    if (e.target.closest('.mup-ico, .mup-name')) return;
+    if (!_activeCN) return; // アクティブ膜がない時は通常メニューを維持
+    e.preventDefault();
+    e.stopImmediatePropagation(); // WYSIWYGではTinyMCEのメニューを抑制
+    if (!_scrollMenu.parentNode) document.body.appendChild(_scrollMenu);
+    _scrollMenu.style.display = 'block';
+    var mx = Math.min(e.clientX, window.innerWidth  - _scrollMenu.offsetWidth  - 8);
+    var my = Math.min(e.clientY, window.innerHeight - _scrollMenu.offsetHeight - 8);
+    _scrollMenu.style.left = Math.max(0, mx) + 'px';
+    _scrollMenu.style.top  = Math.max(0, my) + 'px';
+  }, true); // capture phase: TinyMCEより先に処理
   // \▲[CN=FOLD.CTX.SCROLL_MENU]
 })();
 // \▲[CN=FOLD.CTX]
