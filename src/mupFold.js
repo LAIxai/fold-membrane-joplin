@@ -1,5 +1,8 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v5.9
+// \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
+// v6.0  2026.04.11(土) 膜目次パネルをjoplin.views.panels外部パネルに刷新（ノートの外に独立表示）
+//                      🗂 膜一覧をScrollメニューに移動。膜色対応。name🟢//comment形式。
+//                      _collectMupData()でpanelに膜情報送信。ポーリングでクリック受取。
 // v5.9  2026.04.11(土) 膜目次パネル（FOLD.TOC.PANEL）追加: 膜メニューに「📋 膜一覧」→フローティングパネル
 //                      クリック → 🟢をその膜に移動 + 自動スクロール
 // v5.8  2026.04.11(土) バグ修正2件: ①WYSIWYG時もmupSetActiveを送信(editor.setTextはindex.ts側でスキップ)
@@ -54,6 +57,9 @@
 // v2.0  2026.03.31(火) 栞ボタン(.mup-bookmark)クリック→エディタ切替 追加
 // v1.0  2026.03.23(月) 初版（膜ヘッダークリックで開閉）
 // ─────────────────────────────────────────────────────
+
+// markdownItRendererと共有する深さ別カラー（パネル表示用）
+var _DEPTH_COLORS = ['#9b6fc4','#5588cc','#4aaa6a','#c8a040','#cc7744','#44aacc'];
 
 // \▼[CN=FOLD.ACTIVE] // アクティブ膜管理（クリック/展開/メニュー時に🟢付与）
 // 【設計】TinyMCEのbodyに属性を書くと変更検知→自動保存→ノートボディ汚染→再レンダリングのループになる。
@@ -409,9 +415,6 @@ function _findNearestVisibleMup() {
     if (!name) return;
     navigator.clipboard.writeText(name).catch(function(){});
   });
-  // ③ 膜一覧: フローティングTOCパネルを開く
-  _addSep();
-  _addItem('🗂 膜一覧', function() { _showTocPanel(); });
   // \▲[CN=FOLD.CTX.MENU]
 
   // \▼[CN=FOLD.CTX.SCROLL] // エディタ切替後: スクロールターゲット膜へ自動スクロール
@@ -494,160 +497,52 @@ function _findNearestVisibleMup() {
   });
   // \▲[CN=FOLD.CTX.EVENT]
 
-  // \▼[CN=FOLD.TOC.PANEL] // 膜目次フローティングパネル
-  // 全膜のCN一覧を表示。クリック→🟢移動+スクロール。ドラッグ移動可。
-  var _tocPanel = null;
+  // \▼[CN=FOLD.TOC.EXT] // 外部パネル連携: 膜データ収集・送信・クリックポーリング
+  // joplin.views.panels APIで作られた外部パネル(mupTocPanel.js)と通信する
 
-  function _showTocPanel() {
-    // 既存パネルがあれば閉じる（トグル）
-    if (_tocPanel && _tocPanel.parentNode) {
-      _tocPanel.parentNode.removeChild(_tocPanel);
-      _tocPanel = null;
-      return;
-    }
-
-    // 全膜を取得（DOMの順序）
+  // 膜データを収集してindex.tsに送信（→パネルにforward）
+  function _collectAndSendToc() {
     var mupEls = document.querySelectorAll('.mup');
-    if (!mupEls.length) return;
-
-    // パネル本体
-    var panel = document.createElement('div');
-    panel.id = 'mup-toc-panel';
-    panel.style.cssText = [
-      'position:fixed','top:60px','right:20px','z-index:100000',
-      'background:#fff','border:1px solid #ccc',
-      'border-radius:6px','box-shadow:0 4px 16px rgba(0,0,0,0.22)',
-      'min-width:220px','max-width:320px','max-height:60vh',
-      'display:flex','flex-direction:column',
-      'font-size:12px','user-select:none'
-    ].join(';');
-
-    // ヘッダー（タイトル＋閉じるボタン）
-    var header = document.createElement('div');
-    header.style.cssText = [
-      'display:flex','align-items:center','justify-content:space-between',
-      'padding:7px 10px','background:#f0f0f0',
-      'border-bottom:1px solid #ddd','border-radius:6px 6px 0 0',
-      'cursor:move','font-weight:bold','font-size:12px','color:#444'
-    ].join(';');
-    header.textContent = '🗂 膜一覧';
-
-    var closeBtn = document.createElement('span');
-    closeBtn.textContent = '✕';
-    closeBtn.style.cssText = 'cursor:pointer;color:#888;font-size:14px;line-height:1;padding:0 2px';
-    closeBtn.onmouseenter = function(){ closeBtn.style.color='#333'; };
-    closeBtn.onmouseleave = function(){ closeBtn.style.color='#888'; };
-    closeBtn.onclick = function(e) {
-      e.stopPropagation();
-      if (panel.parentNode) panel.parentNode.removeChild(panel);
-      _tocPanel = null;
-    };
-    header.appendChild(closeBtn);
-    panel.appendChild(header);
-
-    // リスト本体（スクロール可）
-    var list = document.createElement('div');
-    list.style.cssText = 'overflow-y:auto;padding:4px 0;';
-
+    var membranes = [];
     Array.prototype.forEach.call(mupEls, function(mupEl) {
-      var cn      = mupEl.getAttribute('data-mup-cn') || '';
-      var pfx     = mupEl.getAttribute('data-mup-pfx') || 'CN';
-      var depth   = 0; // ネスト深さをDOM上の祖先.mup数で計算
+      var cn = mupEl.getAttribute('data-mup-cn') || '';
+      var depth = 0;
       var p = mupEl.parentElement;
       while (p) {
         if (p.classList && p.classList.contains('mup')) depth++;
         p = p.parentElement;
       }
-      // コメントテキスト取得（em要素）
       var emEl = mupEl.querySelector(':scope > .mup-hd em');
       var comment = emEl ? emEl.textContent.replace(/^[\s\/]+/, '').trim() : '';
-
-      // 🟢中かどうか
-      var isActive = (_activeCN && _activeCN === cn);
-
-      var row = document.createElement('div');
-      row.style.cssText = [
-        'padding:5px 10px 5px ' + (10 + depth * 12) + 'px',
-        'cursor:pointer',
-        'color:' + (isActive ? '#1a73e8' : '#333'),
-        'background:' + (isActive ? '#e8f0fe' : ''),
-        'border-left:3px solid ' + (isActive ? '#1a73e8' : 'transparent'),
-        'line-height:1.4'
-      ].join(';');
-
-      var nameSpan = document.createElement('span');
-      nameSpan.style.cssText = 'font-family:monospace;font-weight:bold';
-      nameSpan.textContent = (isActive ? '🟢 ' : '') + cn;
-
-      row.appendChild(nameSpan);
-      if (comment) {
-        var cmtSpan = document.createElement('span');
-        cmtSpan.style.cssText = 'color:#888;margin-left:6px;font-size:0.9em';
-        cmtSpan.textContent = '// ' + comment;
-        row.appendChild(cmtSpan);
-      }
-
-      row.onmouseenter = function() {
-        if (!isActive) { row.style.background = '#f5f5f5'; }
-      };
-      row.onmouseleave = function() {
-        row.style.background = isActive ? '#e8f0fe' : '';
-      };
-      row.onclick = function() {
-        _setActiveMup(mupEl);
-        _scrollToCn(cn);
-        // パネル内の全行を再描画（アクティブ行の強調を更新）
-        _refreshTocPanel(panel, list);
-      };
-
-      list.appendChild(row);
+      var color = _DEPTH_COLORS[depth % _DEPTH_COLORS.length];
+      membranes.push({ cn: cn, depth: depth, comment: comment, color: color });
     });
-
-    panel.appendChild(list);
-    document.body.appendChild(panel);
-    _tocPanel = panel;
-
-    // ドラッグ移動
-    var _dragStartX, _dragStartY, _dragPanelX, _dragPanelY;
-    header.addEventListener('mousedown', function(e) {
-      if (e.target === closeBtn) return;
-      _dragStartX = e.clientX;
-      _dragStartY = e.clientY;
-      var rect = panel.getBoundingClientRect();
-      _dragPanelX = rect.left;
-      _dragPanelY = rect.top;
-      function _onMove(ev) {
-        panel.style.left = (_dragPanelX + ev.clientX - _dragStartX) + 'px';
-        panel.style.top  = (_dragPanelY + ev.clientY - _dragStartY) + 'px';
-        panel.style.right = 'auto';
-      }
-      function _onUp() {
-        document.removeEventListener('mousemove', _onMove);
-        document.removeEventListener('mouseup', _onUp);
-      }
-      document.addEventListener('mousemove', _onMove);
-      document.addEventListener('mouseup', _onUp);
+    webviewApi.postMessage('markMupRenderer', {
+      type: 'mupUpdateToc',
+      membranes: membranes,
+      activeCN: _activeCN
     });
   }
 
-  function _refreshTocPanel(panel, list) {
-    var mupEls = document.querySelectorAll('.mup');
-    var rows = list.querySelectorAll('div');
-    Array.prototype.forEach.call(rows, function(row, idx) {
-      var mupEl = mupEls[idx];
-      if (!mupEl) return;
-      var cn = mupEl.getAttribute('data-mup-cn') || '';
-      var isActive = (_activeCN && _activeCN === cn);
-      row.style.color      = isActive ? '#1a73e8' : '#333';
-      row.style.background = isActive ? '#e8f0fe' : '';
-      row.style.borderLeft = '3px solid ' + (isActive ? '#1a73e8' : 'transparent');
-      var nameSpan = row.querySelector('span');
-      if (nameSpan) {
-        nameSpan.textContent = (isActive ? '🟢 ' : '') + cn;
-      }
-    });
+  // パネルからのクリックをポーリング（400ms間隔）
+  var _tocPollTimer = null;
+  function _startTocPoll() {
+    if (_tocPollTimer) return;
+    _tocPollTimer = setInterval(function() {
+      webviewApi.postMessage('markMupRenderer', { type: 'mupGetTocTarget' })
+        .then(function(res) {
+          if (!res || !res.cn) return;
+          var mupEl = document.querySelector('.mup[data-mup-cn="' + res.cn + '"]');
+          if (mupEl) _setActiveMup(mupEl);
+          _scrollToCn(res.cn);
+          _collectAndSendToc(); // パネルのハイライトを更新
+        });
+    }, 400);
   }
-  // \▲[CN=FOLD.TOC.PANEL]
+  function _stopTocPoll() {
+    if (_tocPollTimer) { clearInterval(_tocPollTimer); _tocPollTimer = null; }
+  }
+  // \▲[CN=FOLD.TOC.EXT]
 
   // \▼[CN=FOLD.CTX.SCROLL_MENU] // 膜以外の右クリック → 「🟢アクティブ膜にスクロール」
   // _activeCNがある時のみ表示。Markdownプレビューのみ（WYSIWYGはTinyMCEが制御）。
@@ -662,36 +557,63 @@ function _findNearestVisibleMup() {
   ].join(';');
   document.body.appendChild(_scrollMenu);
 
-  (function() {
-    var item = document.createElement('div');
-    item.textContent = '🟢 Scroll to active membrane';
-    item.style.cssText = 'padding:7px 18px;color:#333;';
-    item.onmouseenter = function(){ item.style.background='#e8f0fe'; item.style.color='#1a73e8'; };
-    item.onmouseleave = function(){ item.style.background=''; item.style.color='#333'; };
-    item.onclick = function() {
-      _hideScrollMenu();
-      if (_activeCN) _scrollToCn(_activeCN);
-    };
-    _scrollMenu.appendChild(item);
-  }());
+  // ① 🟢 アクティブ膜にスクロール（_activeCNがある時のみ有効）
+  var _smScrollItem = document.createElement('div');
+  _smScrollItem.textContent = '🟢 Scroll to active membrane';
+  _smScrollItem.style.cssText = 'padding:7px 18px;color:#333;';
+  _smScrollItem.onmouseenter = function(){ _smScrollItem.style.background='#e8f0fe'; _smScrollItem.style.color='#1a73e8'; };
+  _smScrollItem.onmouseleave = function(){ _smScrollItem.style.background=''; _smScrollItem.style.color='#333'; };
+  _smScrollItem.onclick = function() {
+    _hideScrollMenu();
+    if (_activeCN) _scrollToCn(_activeCN);
+  };
+  _scrollMenu.appendChild(_smScrollItem);
+
+  // セパレーター
+  var _smSep = document.createElement('div');
+  _smSep.style.cssText = 'height:1px;background:#eee;margin:3px 0';
+  _scrollMenu.appendChild(_smSep);
+
+  // ② 🗂 膜一覧パネルのトグル（常時有効）
+  var _smTocItem = document.createElement('div');
+  _smTocItem.textContent = '🗂 膜一覧';
+  _smTocItem.style.cssText = 'padding:7px 18px;color:#333;';
+  _smTocItem.onmouseenter = function(){ _smTocItem.style.background='#e8f0fe'; _smTocItem.style.color='#1a73e8'; };
+  _smTocItem.onmouseleave = function(){ _smTocItem.style.background=''; _smTocItem.style.color='#333'; };
+  _smTocItem.onclick = function() {
+    _hideScrollMenu();
+    webviewApi.postMessage('markMupRenderer', { type: 'mupToggleToc' })
+      .then(function(res) {
+        if (res && res.visible) {
+          _collectAndSendToc();
+          _startTocPoll();
+        } else {
+          _stopTocPoll();
+        }
+      });
+  };
+  _scrollMenu.appendChild(_smTocItem);
 
   function _hideScrollMenu() { _scrollMenu.style.display = 'none'; }
 
   // 両モード対応: capture phaseで登録→膜以外の右クリックで表示
-  // _activeCNがある時のみ介入（ない時は通常メニュー: TinyMCE or ブラウザ）
+  // 膜ノートのpreferenceとして、_activeCN or 膜が存在する時に介入
   document.addEventListener('contextmenu', function(e) {
-    // 膜アイコン・名前は膜メニューに任せる（同じcapture相で処理済み）
     if (e.target.closest('.mup-ico, .mup-name')) return;
-    if (!_activeCN) return; // アクティブ膜がない時は通常メニューを維持
+    // 膜が1つもなければ通常メニューを維持
+    if (!document.querySelector('.mup')) return;
     e.preventDefault();
-    e.stopImmediatePropagation(); // WYSIWYGではTinyMCEのメニューを抑制
+    e.stopImmediatePropagation();
+    // _activeCNがない時はスクロール項目をグレーアウト
+    _smScrollItem.style.color = _activeCN ? '#333' : '#bbb';
+    _smScrollItem.style.cursor = _activeCN ? 'pointer' : 'default';
     if (!_scrollMenu.parentNode) document.body.appendChild(_scrollMenu);
     _scrollMenu.style.display = 'block';
     var mx = Math.min(e.clientX, window.innerWidth  - _scrollMenu.offsetWidth  - 8);
     var my = Math.min(e.clientY, window.innerHeight - _scrollMenu.offsetHeight - 8);
     _scrollMenu.style.left = Math.max(0, mx) + 'px';
     _scrollMenu.style.top  = Math.max(0, my) + 'px';
-  }, true); // capture phase: TinyMCEより先に処理
+  }, true);
   // \▲[CN=FOLD.CTX.SCROLL_MENU]
 })();
 // \▲[CN=FOLD.CTX]

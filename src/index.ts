@@ -647,6 +647,30 @@ joplin.plugins.register({
     let _pendingActiveCN: string | null | undefined = undefined;
     let _setActiveDebounce: ReturnType<typeof setTimeout> | null = null;
     // \▲[CN=4723_setActive]
+
+    // \▼[CN=4730_tocPanel] // 膜目次パネル: joplin.views.panels APIで独立ウィンドウとして表示
+    let _tocPanelVisible = false;
+    let _pendingTocCN: string | null = null;
+    const _tocPanel = await joplin.views.panels.create('mupTocPanel');
+    await joplin.views.panels.addScript(_tocPanel, './mupTocPanel.js');
+    await joplin.views.panels.setHtml(_tocPanel, `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#fff;height:100vh;display:flex;flex-direction:column}
+#toc-header{padding:8px 12px;background:#f5f5f5;border-bottom:1px solid #ddd;font-size:13px;font-weight:bold;color:#444;flex-shrink:0;user-select:none}
+#toc-list{overflow-y:auto;flex:1}
+</style></head>
+<body>
+<div id="toc-header">🗂 膜一覧</div>
+<div id="toc-list"></div>
+</body></html>`);
+    await joplin.views.panels.show(_tocPanel, false); // 初期非表示
+    await joplin.views.panels.onMessage(_tocPanel, async (msg: any) => {
+      if (msg?.type === 'tocClick') {
+        _pendingTocCN = msg.cn as string;
+      }
+    });
+    // \▲[CN=4730_tocPanel]
     await joplin.contentScripts.onMessage('markMupEditor', async (msg: any) => {
       if (msg?.type === 'mupCheckMode' && _modeCheckResolve) {
         const resolve = _modeCheckResolve;
@@ -767,6 +791,29 @@ joplin.plugins.register({
         return;
       }
       // \▲[CN=4723_onMessage.SET_ACTIVE]
+
+      // \▼[CN=4731_onMessage.TOC] // 膜目次パネル: トグル / データ更新 / クリック結果返却
+      if (msg.type === 'mupToggleToc') {
+        _tocPanelVisible = !_tocPanelVisible;
+        await joplin.views.panels.show(_tocPanel, _tocPanelVisible);
+        return { visible: _tocPanelVisible };
+      }
+      if (msg.type === 'mupUpdateToc') {
+        if (_tocPanelVisible) {
+          await joplin.views.panels.postMessage(_tocPanel, {
+            type: 'updateToc',
+            membranes: msg.membranes,
+            activeCN: msg.activeCN,
+          });
+        }
+        return;
+      }
+      if (msg.type === 'mupGetTocTarget') {
+        const cn = _pendingTocCN;
+        _pendingTocCN = null;
+        return { cn };
+      }
+      // \▲[CN=4731_onMessage.TOC]
 
       // \▼[CN=4724_onMessage.INITIAL_SCROLL] // 起動時🟢復元後: CodeMirror左ペインを同期
       // mupFold.js(Markdownモード)がdata-mup-active検出→scrollIntoView後に送信。
