@@ -1,5 +1,7 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
+// v6.1  2026.04.11(土) パネル表示バグ修正: Pull型ポーリング対応(_startTocPoll毎回送信)
+//                      メニュー名英語化: "🟢 Scroll to active membrane" / "🗂 Membranes Index"
 // v6.0  2026.04.11(土) 膜目次パネルをjoplin.views.panels外部パネルに刷新（ノートの外に独立表示）
 //                      🗂 膜一覧をScrollメニューに移動。膜色対応。name🟢//comment形式。
 //                      _collectMupData()でpanelに膜情報送信。ポーリングでクリック受取。
@@ -525,17 +527,21 @@ function _findNearestVisibleMup() {
   }
 
   // パネルからのクリックをポーリング（400ms間隔）
+  // v6.1: 毎回_collectAndSendTocを呼んでindex.tsの_latestTocDataを常に最新に保つ
+  //        パネルがPull型ポーリング(600ms)でrequestTocを投げるため、最新データが必要
   var _tocPollTimer = null;
   function _startTocPoll() {
     if (_tocPollTimer) return;
     _tocPollTimer = setInterval(function() {
+      // 常にTOCデータを送信（index.tsの_latestTocDataを更新）
+      _collectAndSendToc();
+      // クリックターゲットも確認
       webviewApi.postMessage('markMupRenderer', { type: 'mupGetTocTarget' })
         .then(function(res) {
           if (!res || !res.cn) return;
           var mupEl = document.querySelector('.mup[data-mup-cn="' + res.cn + '"]');
           if (mupEl) _setActiveMup(mupEl);
           _scrollToCn(res.cn);
-          _collectAndSendToc(); // パネルのハイライトを更新
         });
     }, 400);
   }
@@ -576,7 +582,7 @@ function _findNearestVisibleMup() {
 
   // ② 🗂 膜一覧パネルのトグル（常時有効）
   var _smTocItem = document.createElement('div');
-  _smTocItem.textContent = '🗂 膜一覧';
+  _smTocItem.textContent = '🗂 Membranes Index';
   _smTocItem.style.cssText = 'padding:7px 18px;color:#333;';
   _smTocItem.onmouseenter = function(){ _smTocItem.style.background='#e8f0fe'; _smTocItem.style.color='#1a73e8'; };
   _smTocItem.onmouseleave = function(){ _smTocItem.style.background=''; _smTocItem.style.color='#333'; };

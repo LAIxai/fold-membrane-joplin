@@ -651,6 +651,8 @@ joplin.plugins.register({
     // \▼[CN=4730_tocPanel] // 膜目次パネル: joplin.views.panels APIで独立ウィンドウとして表示
     let _tocPanelVisible = false;
     let _pendingTocCN: string | null = null;
+    // Pull型ポーリング用: パネルからのrequestTocに返すデータを保持
+    let _latestTocData: { membranes: any[]; activeCN: string | null } = { membranes: [], activeCN: null };
     const _tocPanel = await joplin.views.panels.create('mupTocPanel');
     await joplin.views.panels.addScript(_tocPanel, './mupTocPanel.js');
     await joplin.views.panels.setHtml(_tocPanel, `<!DOCTYPE html>
@@ -661,13 +663,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 #toc-list{overflow-y:auto;flex:1}
 </style></head>
 <body>
-<div id="toc-header">🗂 膜一覧</div>
+<div id="toc-header">🗂 Membranes Index</div>
 <div id="toc-list"></div>
 </body></html>`);
     await joplin.views.panels.show(_tocPanel, false); // 初期非表示
     await joplin.views.panels.onMessage(_tocPanel, async (msg: any) => {
       if (msg?.type === 'tocClick') {
         _pendingTocCN = msg.cn as string;
+        return;
+      }
+      // Pull型: パネルが600msごとに最新データをリクエスト
+      if (msg?.type === 'requestToc') {
+        return _latestTocData;
       }
     });
     // \▲[CN=4730_tocPanel]
@@ -799,6 +806,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
         return { visible: _tocPanelVisible };
       }
       if (msg.type === 'mupUpdateToc') {
+        // Pull型ポーリング用にデータを保存（パネルが600msごとにrequestTocで取得）
+        _latestTocData = { membranes: msg.membranes || [], activeCN: msg.activeCN || null };
+        // Push型でも即時転送（補助: onMessageが動く環境では即時反映）
         if (_tocPanelVisible) {
           await joplin.views.panels.postMessage(_tocPanel, {
             type: 'updateToc',

@@ -1,21 +1,42 @@
-// \▼[CN=TOC_PANEL] // Fold Membrane - 膜目次パネル v1.0
+// \▼[CN=TOC_PANEL] // Fold Membrane - 膜目次パネル v1.1
 // Joplin panels API webviewで動作。index.tsと双方向メッセージ通信。
-// 受信: updateToc { membranes, activeCN } → 膜一覧を描画
+// Pull: 600msごとにrequestTocでindex.tsから最新データを取得（確実）
+// Push: updateToc受信でも即時更新（補助）
 // 送信: tocClick { cn } → index.tsが_pendingTocCNを更新→mupFold.jsがポーリングで受取
 
 (function() {
   'use strict';
 
   var _activeCN = null;
+  var _lastKey = '';  // 変化なし時の再描画を防ぐ
 
-  // \▼[CN=TOC_PANEL.RECEIVE] // index.tsからのメッセージ受信
+  // \▼[CN=TOC_PANEL.RECEIVE] // Push受信: index.tsからpostMessageで来た場合（補助）
   webviewApi.onMessage(function(message) {
-    if (message.type === 'updateToc') {
-      _activeCN = message.activeCN || null;
-      renderList(message.membranes || []);
+    if (message && message.type === 'updateToc') {
+      _applyData(message);
     }
   });
   // \▲[CN=TOC_PANEL.RECEIVE]
+
+  // \▼[CN=TOC_PANEL.POLL] // Pull: 600msごとにindex.tsから最新TOCデータを取得（確実）
+  // パネル開時のレースコンディション（onMessage未登録）を回避するためポーリング方式を採用
+  setInterval(function() {
+    webviewApi.postMessage({ type: 'requestToc' })
+      .then(function(data) {
+        if (!data) return;
+        _applyData(data);
+      })
+      .catch(function() {});
+  }, 600);
+  // \▲[CN=TOC_PANEL.POLL]
+
+  function _applyData(data) {
+    var key = JSON.stringify([data.membranes, data.activeCN]);
+    if (key === _lastKey) return; // 変化なし → 描画スキップ
+    _lastKey = key;
+    _activeCN = data.activeCN || null;
+    renderList(data.membranes || []);
+  }
 
   // \▼[CN=TOC_PANEL.RENDER] // 膜一覧描画
   function renderList(membranes) {
@@ -26,7 +47,7 @@
     if (!membranes.length) {
       var empty = document.createElement('div');
       empty.style.cssText = 'padding:20px;color:#aaa;font-size:12px;text-align:center';
-      empty.textContent = '膜がありません';
+      empty.textContent = 'No membranes';
       list.appendChild(empty);
       return;
     }
