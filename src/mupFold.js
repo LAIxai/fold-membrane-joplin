@@ -514,7 +514,7 @@ function _findNearestVisibleMup() {
     var panel = document.createElement('div');
     panel.id = 'mup-toc-panel';
     panel.style.cssText = [
-      'position:fixed','top:60px','right:20px','z-index:99997',
+      'position:fixed','top:60px','right:20px','z-index:100000',
       'background:#fff','border:1px solid #ccc',
       'border-radius:6px','box-shadow:0 4px 16px rgba(0,0,0,0.22)',
       'min-width:220px','max-width:320px','max-height:60vh',
