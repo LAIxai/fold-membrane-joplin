@@ -732,8 +732,9 @@ joplin.plugins.register({
       }
       // \▲[CN=4721_onMessage.SCROLL_TARGET]
 
-      // \▼[CN=4723_onMessage.SET_ACTIVE] // 🟢永続化: Markdownプレビューで膜クリック→ノートソースに🟢書き込み
-      // mupFold.js(Markdownモード)から送信。WYSIWYGからは送信されない（head styleのみ）。
+      // \▼[CN=4723_onMessage.SET_ACTIVE] // 🟢永続化: 膜クリック→ノートソースに🟢書き込み
+      // mupFold.jsから送信（Markdown/WYSIWYG両モード）。
+      // 開始膜・閉じ膜の両方に🟢を書き込む（左ペインCodeMirrorに表示するため）。
       // デバウンス300ms: 連続クリック時は最後のCNだけ書き込む。
       if (msg.type === 'mupSetActive') {
         _pendingActiveCN = (msg.cn as string | null) ?? null;
@@ -744,13 +745,13 @@ joplin.plugins.register({
           if (cn === undefined) return;
           const note = await joplin.workspace.selectedNote();
           if (!note) return;
-          // 既存の🟢を全削除（全ての開始膜から）
-          let body = note.body.replace(/(\$?[▼▶]m\[(?:CN|H[1-3])=[^\]]+\]\$?)🟢/g, '$1');
-          // 対象CNに🟢を追加
+          // 既存の🟢を全削除（開始膜・閉じ膜の両方から）
+          let body = note.body.replace(/(\$?[▼▶▲◀]m\[(?:CN|H[1-3])=[^\]]+\]\$?)🟢/g, '$1');
+          // 対象CNの開始膜・閉じ膜の両方に🟢を追加（左ペインCodeMirror表示用）
           if (cn) {
             const escapedCn = (cn as string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             body = body.replace(
-              new RegExp(`(\\$?[▼▶]m\\[(?:CN|H[1-3])=${escapedCn}\\]\\$?)`),
+              new RegExp(`(\\$?[▼▶▲◀]m\\[(?:CN|H[1-3])=${escapedCn}\\]\\$?)`, 'g'),
               '$1🟢'
             );
           }
