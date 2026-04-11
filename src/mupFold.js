@@ -1,5 +1,7 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v5.3
+// \▼[CN=FOLD] // Fold Membrane - click handler v5.4
 // ─── changelog ───────────────────────────────────────
+// v5.4  2026.04.11(土) _triggerSyncScroll: KeyboardEvent(ArrowDown)dispatch方式に変更
+//                      ユーザー発見「Note viewerフォーカス+矢印キー」を再現
 // v5.3  2026.04.11(土) _triggerSyncScroll: scrollBy+WheelEvent+scroll dispatchの3段構え
 //                      遅延を150ms→400msに延長（モード切替直後のJoplin初期化待ち）
 // v5.2  2026.04.11(土) FOLD.CTX.SCROLL_MENUをcapture phase化→WYSIWYG対応
@@ -386,23 +388,23 @@ function _findNearestVisibleMup() {
   // 両方向（Markdown→WYSIWYG / WYSIWYG→Markdown）対応（v4.6〜）
   // index.tsが保持していたCNアンカーを mupGetScrollTarget で照会しscrollIntoViewする。
 
-  // \▼[CN=FOLD.SYNC] // Sync Scroll起動: プレビューのスクロールイベントを発火→CodeMirrorを同期
-  // Joplinのsync scrollの実装に応じてscroll/WheelEvent/scrollByの3段構えで試みる
+  // \▼[CN=FOLD.SYNC] // Sync Scroll起動: Note viewerフォーカス+ArrowKeyでCodeMirrorを同期
+  // ユーザー発見: 「移動→フォーカス→Note viewer → 矢印キー」でSync Scrollが起動する。
+  // webview内からKeyboardEventをdispatchして同じ効果を再現する。
   // 遅延400ms: モード切替直後はJoplinのlistener設定が完了していないケースがある
   function _triggerSyncScroll() {
     setTimeout(function() {
-      // ① scrollBy: scrollイベントを発火（最もシンプル）
+      // Note viewerにフォーカス相当 + ArrowDownでSync Scroll起動を試みる
+      document.body.focus();
+      try {
+        var ev = new KeyboardEvent('keydown', {
+          key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, which: 40,
+          bubbles: true, cancelable: true, view: window
+        });
+        window.dispatchEvent(ev);
+      } catch(e) {}
+      // フォールバック: scrollByも併用（どちらかが効くことを期待）
       window.scrollBy(0, 1);
-      // ② WheelEvent dispatch: Joplinがwheelイベントをlistenしている場合に対応
-      try {
-        window.dispatchEvent(new WheelEvent('wheel', {
-          bubbles: true, cancelable: true, deltaY: 1, deltaMode: 0
-        }));
-      } catch(e) {}
-      // ③ scrollイベント直接dispatch: 念のため
-      try {
-        window.dispatchEvent(new Event('scroll', { bubbles: true }));
-      } catch(e) {}
     }, 400);
   }
   // \▲[CN=FOLD.SYNC]
