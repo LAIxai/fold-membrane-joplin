@@ -801,6 +801,14 @@ joplin.plugins.register({
       // ユーザー発見: 「移動→フォーカス→Note viewer → 矢印キー」でSync Scrollが起動する。
       // webview内のJS KeyboardEvent dispatchはBlink組み込みスクロールに届かないため
       // index.ts経由でjoplin.commands.execute('focusElement')+ osascript ↓キー送信。
+      //
+      // 【意図的な遅延 約1秒について】
+      // mupFold.js側300ms + ここでの待機時間 で合計約1秒の遅延が生じる。
+      // 150msに短縮可能だが、あえてこの遅延を維持している。
+      // 理由: エディタ切替→プレビュースクロール→左ペイン同期、という3段階の処理が
+      //       視覚的に「見える」ことで、ユーザーがJoplinのSync Scroll機構を
+      //       意識できる。また、Joplin本体がこの機能を標準サポートしていないことへの
+      //       「あえての提示」でもある。本来Joplinが実装すべき機能であることを示す証拠として。
       if (msg.type === 'mupSyncScroll') {
         try {
           // Note viewerにフォーカス（複数のコマンドIDを試みる）
@@ -814,7 +822,7 @@ joplin.plugins.register({
             }
           }
         } catch(_e) {}
-        // 少し待ってからosascriptで↓キーを送信
+        // 意図的に長めの待機（150msに短縮可能だが上記理由でそのまま）
         await new Promise(r => setTimeout(r, 150));
         try {
           const { exec } = require('child_process');
