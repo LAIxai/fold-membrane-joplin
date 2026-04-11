@@ -1,5 +1,7 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
+// v6.2  2026.04.12(日) パネルクリック無効バグ修正: モード切替後にmupFold.js再初期化→_tocPollTimerリセット
+//                      起動時にmupIsTocVisibleでパネル状態を照会→表示中ならポーリング自動再開
 // v6.1  2026.04.11(土) パネル表示バグ修正: Pull型ポーリング対応(_startTocPoll毎回送信)
 //                      メニュー名英語化: "🟢 Scroll to active membrane" / "🗂 Membranes Index"
 // v6.0  2026.04.11(土) 膜目次パネルをjoplin.views.panels外部パネルに刷新（ノートの外に独立表示）
@@ -548,6 +550,22 @@ function _findNearestVisibleMup() {
   function _stopTocPoll() {
     if (_tocPollTimer) { clearInterval(_tocPollTimer); _tocPollTimer = null; }
   }
+
+  // \▼[CN=FOLD.TOC.INIT] // 起動時パネル状態復元
+  // モード切替（Markdown⇔WYSIWYG）でmupFold.jsが再初期化されると_tocPollTimerがリセットされる。
+  // 起動時にindex.tsへmupIsTocVisibleを問い合わせ、パネルが開いていれば自動でポーリング再開。
+  (function() {
+    webviewApi.postMessage('markMupRenderer', { type: 'mupIsTocVisible' })
+      .then(function(res) {
+        if (res && res.visible) {
+          _collectAndSendToc();
+          _startTocPoll();
+        }
+      })
+      .catch(function() {});
+  }());
+  // \▲[CN=FOLD.TOC.INIT]
+
   // \▲[CN=FOLD.TOC.EXT]
 
   // \▼[CN=FOLD.CTX.SCROLL_MENU] // 膜以外の右クリック → 「🟢アクティブ膜にスクロール」

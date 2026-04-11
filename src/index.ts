@@ -805,6 +805,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
         await joplin.views.panels.show(_tocPanel, _tocPanelVisible);
         return { visible: _tocPanelVisible };
       }
+      // mupFold.js起動時（モード切替後再初期化）にパネル表示状態を照会→ポーリング復元に使用
+      if (msg.type === 'mupIsTocVisible') {
+        return { visible: _tocPanelVisible };
+      }
       if (msg.type === 'mupUpdateToc') {
         // Pull型ポーリング用にデータを保存（パネルが600msごとにrequestTocで取得）
         _latestTocData = { membranes: msg.membranes || [], activeCN: msg.activeCN || null };
