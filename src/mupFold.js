@@ -1,5 +1,7 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v5.0
+// \▼[CN=FOLD] // Fold Membrane - click handler v5.1
 // ─── changelog ───────────────────────────────────────
+// v5.1  2026.04.11(土) バグ修正: contextmenuで_setActiveMupを呼ばない（右クリックで🟢が付くバグ）
+//                      「🟢 Scroll to active membrane」を膜メニューから削除→膜以外の右クリックメニューに移動
 // v5.0  2026.04.11(土) _scrollToCn後にwindow.scrollBy(0,1)でSync Scroll起動→左ペイン同期
 //                      コンテキストメニューに「🟢 アクティブ膜にスクロール」追加
 // v4.9  2026.04.10(金) バグ#2修正: mupInitialScrollToCnを削除→mupScrollToCn→CodeMirror移動→Sync Scrollがプレビューを引きずるバグ根絶
@@ -367,12 +369,7 @@ function _findNearestVisibleMup() {
       webviewApi.postMessage('markMupRenderer', { type: 'mupToggleEditor', cn: cn });
     }
   );
-  // ② 🟢アクティブ膜にスクロール: _activeCNがある時のみ有効
-  // 手動スクロール後に🟢膜位置を見失ったとき、即座に戻る
-  _addItem('🟢 Scroll to active membrane', function() {
-    if (_activeCN) _scrollToCn(_activeCN);
-  });
-  // ③ 名前をコピー: data-mup-cn属性からCN名を取得してクリップボードへ
+  // ② 名前をコピー: data-mup-cn属性からCN名を取得してクリップボードへ
   _addSep();
   _addItem('📋 名前をコピー', function() {
     var name = _ctxMup ? (_ctxMup.getAttribute('data-mup-cn') || '') : '';
@@ -442,23 +439,68 @@ function _findNearestVisibleMup() {
   // \▼[CN=FOLD.CTX.EVENT] // 右クリックイベント
   // 対象: .mup-ico と .mup-name — WYSIWYG・Markdownプレビュー共通
   // キャプチャ相(true) + stopImmediatePropagation でTinyMCEのメニューを完全抑制
+  // v5.1: _setActiveMup削除 → 右クリックで🟢が付くバグを修正
   document.addEventListener('contextmenu', function(e) {
     var target = e.target.closest('.mup-ico, .mup-name');
-    if (!target) { _hide(); return; }
+    if (!target) { _hide(); _hideScrollMenu(); return; }
     e.preventDefault();
     e.stopImmediatePropagation();
     var mupEl = e.target.closest('.mup');
-    // 右クリックした膜を🟢アクティブに
-    _setActiveMup(mupEl);
     _show(e.clientX, e.clientY, mupEl);
   }, true);
   document.addEventListener('click', function(e) {
     if (!_menu.contains(e.target)) _hide();
+    if (!_scrollMenu.contains(e.target)) _hideScrollMenu();
   });
   document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') _hide();
+    if (e.key === 'Escape') { _hide(); _hideScrollMenu(); }
   });
   // \▲[CN=FOLD.CTX.EVENT]
+
+  // \▼[CN=FOLD.CTX.SCROLL_MENU] // 膜以外の右クリック → 「🟢アクティブ膜にスクロール」
+  // _activeCNがある時のみ表示。Markdownプレビューのみ（WYSIWYGはTinyMCEが制御）。
+  var _scrollMenu = document.createElement('div');
+  _scrollMenu.id = 'mup-scroll-ctx';
+  _scrollMenu.style.cssText = [
+    'position:fixed','z-index:99998','display:none',
+    'background:#fff','border:1px solid #ccc',
+    'border-radius:5px','box-shadow:0 3px 10px rgba(0,0,0,0.18)',
+    'padding:4px 0','min-width:200px','font-size:13px',
+    'user-select:none','cursor:default'
+  ].join(';');
+  document.body.appendChild(_scrollMenu);
+
+  (function() {
+    var item = document.createElement('div');
+    item.textContent = '🟢 Scroll to active membrane';
+    item.style.cssText = 'padding:7px 18px;color:#333;';
+    item.onmouseenter = function(){ item.style.background='#e8f0fe'; item.style.color='#1a73e8'; };
+    item.onmouseleave = function(){ item.style.background=''; item.style.color='#333'; };
+    item.onclick = function() {
+      _hideScrollMenu();
+      if (_activeCN) _scrollToCn(_activeCN);
+    };
+    _scrollMenu.appendChild(item);
+  }());
+
+  function _hideScrollMenu() { _scrollMenu.style.display = 'none'; }
+
+  // Markdownプレビューのみ: 膜以外の右クリックで表示
+  if (!_isWYSIWYG) {
+    document.addEventListener('contextmenu', function(e) {
+      // 膜アイコン・名前は膜メニューに任せる（capture相で処理済み）
+      if (e.target.closest('.mup-ico, .mup-name')) return;
+      if (!_activeCN) return; // アクティブ膜がない時は何もしない
+      e.preventDefault();
+      if (!_scrollMenu.parentNode) document.body.appendChild(_scrollMenu);
+      _scrollMenu.style.display = 'block';
+      var mx = Math.min(e.clientX, window.innerWidth  - _scrollMenu.offsetWidth  - 8);
+      var my = Math.min(e.clientY, window.innerHeight - _scrollMenu.offsetHeight - 8);
+      _scrollMenu.style.left = Math.max(0, mx) + 'px';
+      _scrollMenu.style.top  = Math.max(0, my) + 'px';
+    });
+  }
+  // \▲[CN=FOLD.CTX.SCROLL_MENU]
 })();
 // \▲[CN=FOLD.CTX]
 
