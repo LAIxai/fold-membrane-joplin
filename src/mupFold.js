@@ -1,5 +1,6 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v5.6
+// \▼[CN=FOLD] // Fold Membrane - click handler v5.7
 // ─── changelog ───────────────────────────────────────
+// v5.7  2026.04.11(土) 🟢ホバー時ツールチップ追加: CSS::beforeでSwitch editor表示
 // v5.6  2026.04.11(土) 🔖ボタン廃止。🟢をクリック可能なボタンに変更（エディタ切替機能継承）。
 //                      閉じ膜にも🟢表示（markdownItRenderer v6.2で.mup-status追加）。
 //                      FOLD.CLICK.BOOKMARK → FOLD.CLICK.GREEN_BTN に置換。
@@ -73,15 +74,24 @@ function _setActiveMup(mupEl) {
   if (_activeCN) {
     // CSS属性セレクターの値は文字列扱いなのでドット等の特殊文字も安全
     var _esc = _activeCN.replace(/"/g, '\\"');
+    var _tip = _isWYSIWYG ? 'Switch editor (edit name)' : 'Switch editor';
     _activeStyle.textContent =
-      // 開始膜・閉じ膜の.mup-status: cursor:pointer（クリック可能であることを示す）
+      // 開始膜・閉じ膜の.mup-status: cursor:pointer + position:relative（ツールチップ基準点）
       '.mup[data-mup-cn="' + _esc + '"] > .mup-hd .mup-status,'
       + '.mup[data-mup-cn="' + _esc + '"] .mup-ft .mup-status {'
-      + 'cursor:pointer!important}'
+      + 'cursor:pointer!important;position:relative}'
       // 🟢表示: 開始膜と閉じ膜の両方に::afterで表示
       + '.mup[data-mup-cn="' + _esc + '"] > .mup-hd .mup-status::after,'
       + '.mup[data-mup-cn="' + _esc + '"] .mup-ft .mup-status::after {'
-      + 'content:"🟢";font-size:0.85em;margin-left:3px;vertical-align:middle}';
+      + 'content:"🟢";font-size:0.85em;margin-left:3px;vertical-align:middle}'
+      // ツールチップ: ホバー時に::beforeで表示（::afterは🟢で使用済み）
+      + '.mup[data-mup-cn="' + _esc + '"] > .mup-hd .mup-status:hover::before,'
+      + '.mup[data-mup-cn="' + _esc + '"] .mup-ft .mup-status:hover::before {'
+      + 'content:"' + _tip + '";'
+      + 'position:absolute;bottom:calc(100% + 5px);left:50%;transform:translateX(-50%);'
+      + 'background:#333;color:#fff;padding:3px 9px;border-radius:4px;'
+      + 'font-size:0.75em;white-space:nowrap;z-index:9999;pointer-events:none;'
+      + 'font-family:sans-serif;font-style:normal;font-weight:normal}';
   } else {
     _activeStyle.textContent = '';
   }
