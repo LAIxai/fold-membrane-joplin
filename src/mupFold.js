@@ -1,5 +1,8 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
+// v6.3  2026.04.12(日) バグ#1修正: WYSIWYG起動時🟢未表示
+//                      FOLD.ACTIVE.INITに600msフォールバック追加: _activeCNがnullならmupGetActiveCnで復元
+//                      改良点#1: FOLD.TOC.INITを条件なし常時ポーリングに変更（パネル前セッション表示に対応）
 // v6.2  2026.04.12(日) パネルクリック無効バグ修正: モード切替後にmupFold.js再初期化→_tocPollTimerリセット
 //                      起動時にmupIsTocVisibleでパネル状態を照会→表示中ならポーリング自動再開
 // v6.1  2026.04.11(土) パネル表示バグ修正: Pull型ポーリング対応(_startTocPoll毎回送信)
@@ -164,6 +167,24 @@ function _setActiveMup(mupEl) {
   setTimeout(function() { _initObs.disconnect(); }, 30000);
   // DOMが既に構築済みのケース（WYSIWYG初回ロード後など）に備えて即時試行
   _tryInitActiveMup();
+
+  // \▼[CN=FOLD.ACTIVE.INIT.WYSIWYG] // WYSIWYGモード🟢復元フォールバック
+  // WYSIWYGではmarkdownItRendererが動かない→data-mup-activeが付かない→MutationObserverが反応しない。
+  // 600ms後に_activeCNがまだnullなら、index.tsにノートソースの🟢付きCNを照会して復元する。
+  setTimeout(function() {
+    if (_activeCN) return; // すでに復元済み（Markdownモードなど）ならスキップ
+    webviewApi.postMessage('markMupRenderer', { type: 'mupGetActiveCn' })
+      .then(function(res) {
+        if (!res || !res.cn || _activeCN) return;
+        var mupEl = document.querySelector('.mup[data-mup-cn="' + res.cn + '"]');
+        if (mupEl) {
+          _setActiveMup(mupEl);
+          mupEl.scrollIntoView({ behavior: 'instant', block: 'center' });
+        }
+      })
+      .catch(function() {});
+  }, 600);
+  // \▲[CN=FOLD.ACTIVE.INIT.WYSIWYG]
 }());
 // \▲[CN=FOLD.ACTIVE.INIT]
 
@@ -551,18 +572,15 @@ function _findNearestVisibleMup() {
     if (_tocPollTimer) { clearInterval(_tocPollTimer); _tocPollTimer = null; }
   }
 
-  // \▼[CN=FOLD.TOC.INIT] // 起動時パネル状態復元
-  // モード切替（Markdown⇔WYSIWYG）でmupFold.jsが再初期化されると_tocPollTimerがリセットされる。
-  // 起動時にindex.tsへmupIsTocVisibleを問い合わせ、パネルが開いていれば自動でポーリング再開。
+  // \▼[CN=FOLD.TOC.INIT] // 起動時TOCポーリング開始
+  // 条件なしで常にポーリングを開始する（v6.3〜）。
+  // 理由1: モード切替後の再初期化でも確実に復元される。
+  // 理由2: Joplinはパネル表示状態を前セッションから引き継ぐが、index.tsの_tocPanelVisible=false
+  //        にリセットされるため、mupIsTocVisibleで照会しても「非表示」と返ってしまっていた。
+  // ポーリングはDOM照会+postMessageのみで軽量（400ms間隔）。
   (function() {
-    webviewApi.postMessage('markMupRenderer', { type: 'mupIsTocVisible' })
-      .then(function(res) {
-        if (res && res.visible) {
-          _collectAndSendToc();
-          _startTocPoll();
-        }
-      })
-      .catch(function() {});
+    _collectAndSendToc();
+    _startTocPoll();
   }());
   // \▲[CN=FOLD.TOC.INIT]
 

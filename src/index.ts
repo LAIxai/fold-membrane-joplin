@@ -809,6 +809,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
       if (msg.type === 'mupIsTocVisible') {
         return { visible: _tocPanelVisible };
       }
+      // WYSIWYG起動時🟢復元: data-mup-activeが付かない→ノートソースから🟢付きCNを直接検索して返す
+      if (msg.type === 'mupGetActiveCn') {
+        const note = await joplin.workspace.selectedNote();
+        if (!note?.body) return { cn: null };
+        const m = note.body.match(/\$?[▼▶▲◀]m\[(?:CN|H[1-3])=([^\]]+)\]\$?🟢/);
+        return { cn: m ? m[1] : null };
+      }
       if (msg.type === 'mupUpdateToc') {
         // Pull型ポーリング用にデータを保存（パネルが600msごとにrequestTocで取得）
         _latestTocData = { membranes: msg.membranes || [], activeCN: msg.activeCN || null };
