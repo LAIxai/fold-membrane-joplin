@@ -1,5 +1,10 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
+// v7.2  2026.04.12(日) ↑↓「外→先頭→末尾→外」サイクル実装 + 閉じ膜ループ修正
+//                      ↓em末尾でない→em末尾へ / em末尾→body先頭(hd)orAfterMup(ft)
+//                      ↑em先頭でない→em先頭へ / em先頭→body末尾(ft)orBeforeMup(hd)
+//                      selectionchange: emなしのmup-ft → setStartAfter(hd)→setStartAfter(mup)
+//                      （mup内部に留まってループする現象を根絶）
 // v7.1  2026.04.12(日) クラス名バグ修正: mup-body→mup-bd（実際のクラス名）
 //                      v7.0まで_getBody()が常にnull返却 → keydownがsetStartAfter(mup)→膜外に飛ぶ
 //                      →「フッタを飛び越える」謎の根本原因。mup-bdに修正で全て解決するはず。
@@ -398,30 +403,45 @@ function _findNearestVisibleMup() {
       var r = document.createRange();
 
       if (key === 'ArrowDown' || key === 'ArrowUp') {
-        // ↑↓: 膜内部 / 膜外へ脱出
+        // ↑↓: 「外→先頭→末尾→外」サイクル
+        // em先頭でない+↑ → em先頭へ。em先頭+↑ → 脱出。
+        // em末尾でない+↓ → em末尾へ。em末尾+↓ → 脱出。
         var isHd = !!em.closest('.mup-hd');
         var mup  = em.closest('.mup');
         var body = _getBody(mup);
+        var lastCh = em.lastChild;
+        var atEnd = (lastCh && lastCh.nodeType === 3 && node === lastCh
+                     && range.startOffset === lastCh.length)
+                 || (node === em && range.startOffset === em.childNodes.length);
+        var atStart = (node.nodeType === 3 && node === em.firstChild && range.startOffset === 0)
+                   || (node === em && range.startOffset === 0);
         e.preventDefault();
+
         if (key === 'ArrowDown') {
-          if (isHd && body) {
-            // ヘッダーem+↓ → body先頭テキストへ
+          if (!atEnd) {
+            // em末尾へ
+            r.setStart(lastCh, lastCh.nodeType === 3 ? lastCh.length : lastCh.childNodes.length);
+          } else if (isHd && body) {
+            // ヘッダーem末尾+↓ → body先頭へ脱出
             var tw = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
             var fn = tw.nextNode();
             if (fn) r.setStart(fn, 0); else r.setStart(body, 0);
           } else {
-            // フッターem+↓ → mup全体の後へ
+            // フッターem末尾+↓ → mup全体の後へ脱出
             r.setStartAfter(mup || em.closest('.mup-ft'));
           }
-        } else {
-          if (!isHd && body) {
-            // フッターem+↑ → body末尾テキストへ
+        } else { // ArrowUp
+          if (!atStart) {
+            // em先頭へ
+            r.setStart(em.firstChild, 0);
+          } else if (!isHd && body) {
+            // フッターem先頭+↑ → body末尾へ脱出
             var tw2 = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
             var ln = null, tn;
             while ((tn = tw2.nextNode())) ln = tn;
             if (ln) r.setStart(ln, ln.length); else r.setStart(body, body.childNodes.length);
           } else {
-            // ヘッダーem+↑ → mup全体の前へ
+            // ヘッダーem先頭+↑ → mup全体の前へ脱出
             r.setStartBefore(mup || em.closest('.mup-hd'));
           }
         }
@@ -462,19 +482,20 @@ function _findNearestVisibleMup() {
       if (!el.closest('.mup-hd, .mup-ft') || el.closest('em')) return;
       var hd = el.closest('.mup-hd, .mup-ft');
       var em = hd ? hd.querySelector('em') : null;
+      var mup = hd ? hd.closest('.mup') : null;
       var r = document.createRange();
-      if (el.closest('.mup-status')) {
+      if (!em) {
+        // emなし（フッターなど）→ mup全体の外に出す（setStartAfter(hd)ではmup内に留まりループする）
+        if (mup) r.setStartAfter(mup); else r.setStartAfter(hd);
+      } else if (el.closest('.mup-status')) {
         // 🟢スパン → em末尾へ
-        var ln = em && em.lastChild;
+        var ln = em.lastChild;
         if (ln) r.setStart(ln, ln.nodeType === 3 ? ln.length : ln.childNodes.length);
-        else if (em) r.setStart(em, em.childNodes.length);
-        else r.setStartAfter(hd);
+        else r.setStart(em, em.childNodes.length);
       } else {
         // 名前・バッジ等 → em先頭へ
-        var fn = em && em.firstChild;
-        if (fn) r.setStart(fn, 0);
-        else if (em) r.setStart(em, 0);
-        else r.setStartAfter(hd);
+        var fn = em.firstChild;
+        if (fn) r.setStart(fn, 0); else r.setStart(em, 0);
       }
       r.collapse(true); sel.removeAllRanges(); sel.addRange(r);
     });
