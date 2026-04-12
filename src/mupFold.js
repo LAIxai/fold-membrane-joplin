@@ -1,5 +1,8 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
+// v7.0  2026.04.12(日) スコープバグ修正: _getBody()をIIFEトップに移動
+//                      v6.9でifブロック内に定義→メニューアクション(ブロック外)からReferenceError
+//                      → IIFE直下に移動することで全セクションからアクセス可能に
 // v6.9  2026.04.12(日) 「膜の中へ移動」バグ修正 + ▶削除 + フッターemにも表示
 //                      原因①: :scope > .mup-bodyが失敗→_getBody()ヘルパーに置換
 //                      原因②: メニューmousedownでTinyMCEがカーソルを先に移動→e.preventDefault()追加
@@ -348,6 +351,15 @@ function _findNearestVisibleMup() {
 (function() {
   var _isWYSIWYG = document.body.getAttribute('contenteditable') === 'true';
 
+  // .mupの直接子である.mup-bodyを取得（IIFEトップで定義→全セクションから参照可）
+  function _getBody(mup) {
+    if (!mup) return null;
+    for (var i = 0; i < mup.children.length; i++) {
+      if (mup.children[i].classList.contains('mup-body')) return mup.children[i];
+    }
+    return null;
+  }
+
   // \▼[CN=FOLD.CTX.PROTECT] // WYSIWYG: emのみ編集可・ラップアラウンド移動
   // .mup-hd/.mup-ft 内で em(コメント) のみ編集可。
   // ← at em先頭 → em末尾へラップ。→ at em末尾 → em先頭へラップ。
@@ -359,15 +371,6 @@ function _findNearestVisibleMup() {
       + '.mup-name,.mup-status{cursor:default!important;user-select:none!important}'
       + '.mup-hd em,.mup-ft em{cursor:text!important;user-select:text!important}';
     document.head.appendChild(_st);
-
-    // .mupの直接子である.mup-bodyを取得（:scope非依存）
-    function _getBody(mup) {
-      if (!mup) return null;
-      for (var i = 0; i < mup.children.length; i++) {
-        if (mup.children[i].classList.contains('mup-body')) return mup.children[i];
-      }
-      return null;
-    }
 
     // ヘッダー内でem以外の場所はクリック阻止（右クリックはスルー）
     document.addEventListener('mousedown', function(e) {
