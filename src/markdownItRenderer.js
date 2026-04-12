@@ -1,8 +1,9 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 6.2
- * @date    2026.04.11(土)
+ * @version 6.3
+ * @date    2026.04.12(日)
+ * @desc    v6.3: 開始膜の🟢位置修正: バッジ<code>をmup-badge化し、mup-name直後に空span.mup-statusを追加。
  * @desc    v6.2: 🔖ボタン廃止。RE_BM/RE_BM_DIV削除。閉じ膜に.mup-statusスパン追加（🟢ボタン化対応）。
  * @desc    v6.1: 🟢永続化対応。ソースに🟢があればdata-mup-active="true"を.mupに付加。
  * @desc    v2.x-v3.x: 全行自前処理方式（renderMarkMup）。罫線・空行に副作用あり。
@@ -155,7 +156,7 @@ function buildMupHtmlMap(blocks, lines){
       var isInf=(st.count==='∞');
       var dispTxt=isInf?'['+st.state+'∞]':'['+st.state+st.count+'+'+st.exp+']';
       var sCol=isInf?'#e00':'#aaa';
-      statusHtml=' <code class="mup-status"'
+      statusHtml=' <code class="mup-badge"'
         +' data-count="'+escH(st.count)+'"'
         +' data-exp="'+escH(st.exp)+'"'
         +' style="font-size:0.8em;font-family:monospace;color:'+sCol+';background:none;border:none;padding:0">'
@@ -188,6 +189,7 @@ function buildMupHtmlMap(blocks, lines){
         +'<span class="mup-hd-lbl" style="display:inline-flex;align-items:center;gap:2px;user-select:none;"'+mupStateAttr+'>'
         +'<span class="mup-ico" style="color:'+col+';font-size:0.75em;cursor:default">'+ico+'</span>'
         +'<span class="mup-name mup-pfx-'+escH(b.pfx)+'" style="font-size:'+hfs+';font-weight:bold;margin:0;cursor:default"> '+escH(cn)+'</span>'
+        +'<span class="mup-status"></span>'
         +(comment?' <em style="color:#555;"> // '+comment+'</em>':'')
         +statusHtml
         +'</span>'
@@ -200,6 +202,7 @@ function buildMupHtmlMap(blocks, lines){
         +'<span class="mup-hd-lbl" style="display:inline-flex;align-items:center;gap:2px;background:#f8f8f8;padding:1px 6px;border-radius:3px;user-select:none;"'+mupStateAttr+'>'
         +'<span class="mup-ico" style="color:'+col+';cursor:default">'+ico+'</span>'
         +'<span class="mup-name" style="font-family:monospace;color:#888;cursor:default"> '+escH(cn)+'</span>'
+        +'<span class="mup-status"></span>'
         +(comment?' <em style="color:#555;"> // '+comment+'</em>':'')
         +statusHtml
         +'</span>'
