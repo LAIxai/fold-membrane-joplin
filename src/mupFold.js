@@ -1,5 +1,10 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
+// v7.9  2026.04.13(月) 根本設計を「通過点」に統一
+//                      ft/hd(emなし)で「止まらせる」が全バグの根源だった
+//                      selectionchangeで_lastArrowDir参照→即通過（ft: ↑→body末尾/↓→mup外）
+//                      keydownはem内処理のみ。_lastArrowDir記録を追加。
+//                      _skipSelChange: 自分のaddRangeによる再発火を1回スキップ
 // v7.8  2026.04.12(日) selectionchange: ft/hd(emなし)→留まる設計に変更
 //                      _skipSelChange: addRangeによる再発火を1回スキップ
 //                      ft+↑/↓はkeydownで処理（v7.7のコードを継続使用）
@@ -393,7 +398,8 @@ function _findNearestVisibleMup() {
     }
     return null;
   }
-  var _skipSelChange = false; // selectionchangeが自分でaddRangeした後の再発火を1回スキップ
+  var _lastArrowDir = 0;    // -1=↑/←, +1=↓/→, 0=other  selectionchangeが方向判定に使う
+  var _skipSelChange = false; // 自分のaddRangeによる再発火を1回スキップ
 
   function _getFt(mup) {
     if (!mup) return null;
@@ -422,11 +428,14 @@ function _findNearestVisibleMup() {
       if (t.closest('.mup-hd, .mup-ft') && !t.closest('em')) e.preventDefault();
     }, true);
 
-    // キーナビゲーション処理
+    // キーナビゲーション処理（em内のみ）
+    // ft/hd(emなし)の通過はselectionchangeが方向ベースで完結させる
     document.addEventListener('keydown', function(e) {
       var key = e.key;
-      if (key !== 'ArrowLeft' && key !== 'ArrowRight'
-       && key !== 'ArrowUp'   && key !== 'ArrowDown') return;
+      // 方向を記録（selectionchangeが参照）
+      if      (key === 'ArrowUp'   || key === 'ArrowLeft')  _lastArrowDir = -1;
+      else if (key === 'ArrowDown' || key === 'ArrowRight') _lastArrowDir =  1;
+      else { _lastArrowDir = 0; return; }
 
       var sel = window.getSelection();
       if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return;
@@ -434,34 +443,8 @@ function _findNearestVisibleMup() {
       var node = range.startContainer;
       var el = (node.nodeType === 3) ? node.parentElement : node;
 
-      // ft/hd(emなし)+↑↓: keydownで直接処理（TinyMCEに渡さない）
+      // em内・hd/ft内のみ処理。emなしft/hdはselectionchangeに任せる。
       var em = el.closest('em');
-      if (!em && (key === 'ArrowUp' || key === 'ArrowDown')) {
-        var inFt = el.closest('.mup-ft');
-        var inHd = inFt ? null : el.closest('.mup-hd');
-        if (inFt || inHd) {
-          var mupX = (inFt || inHd).closest('.mup');
-          var bdX  = _getBody(mupX);
-          e.preventDefault(); e.stopPropagation();
-          var rx = document.createRange();
-          if (inFt) {
-            if (key === 'ArrowUp' && bdX) {
-              var twX = document.createTreeWalker(bdX, NodeFilter.SHOW_TEXT, null, false);
-              var lnX = null, tnX;
-              while ((tnX = twX.nextNode())) lnX = tnX;
-              if (lnX) rx.setStart(lnX, lnX.length); else rx.setStart(bdX, bdX.childNodes.length);
-            } else { rx.setStartAfter(mupX); }
-          } else {
-            if (key === 'ArrowDown' && bdX) {
-              var twY = document.createTreeWalker(bdX, NodeFilter.SHOW_TEXT, null, false);
-              var fnY = twY.nextNode();
-              if (fnY) rx.setStart(fnY, 0); else rx.setStart(bdX, 0);
-            } else { rx.setStartBefore(mupX); }
-          }
-          rx.collapse(true); sel.removeAllRanges(); sel.addRange(rx);
-          return;
-        }
-      }
       if (!em || !el.closest('.mup-hd, .mup-ft')) return;
       var r = document.createRange();
 
@@ -538,10 +521,35 @@ function _findNearestVisibleMup() {
       var r   = document.createRange();
 
       if (!em) {
-        // emなし(ft or hd): その要素の末尾に留まる
-        // keydownがここを検出して↑↓を処理する
-        _skipSelChange = true; // 次のselectionchange(addRangeによる再発火)をスキップ
-        r.setStart(hd, hd.childNodes.length);
+        // emなし(ft or hd): 方向ベース即通過（透明な通路）
+        // ↑でft → body末尾 / ↓でft → mup外 / ↓でhd → body先頭 / ↑でhd → mup前
+        var isFt = !!el.closest('.mup-ft');
+        var mup2 = hd.closest('.mup');
+        var body2 = _getBody(mup2);
+        _skipSelChange = true;
+        if (isFt) {
+          if (_lastArrowDir < 0 && body2) {
+            // ↑でft → body末尾
+            var twF = document.createTreeWalker(body2, NodeFilter.SHOW_TEXT, null, false);
+            var lnF = null, tnF;
+            while ((tnF = twF.nextNode())) lnF = tnF;
+            if (lnF) r.setStart(lnF, lnF.length); else r.setStart(body2, body2.childNodes.length);
+          } else {
+            // ↓ or クリック → mup外
+            r.setStartAfter(mup2);
+          }
+        } else {
+          // hd(emなし)
+          if (_lastArrowDir > 0 && body2) {
+            // ↓でhd → body先頭
+            var twH = document.createTreeWalker(body2, NodeFilter.SHOW_TEXT, null, false);
+            var fnH = twH.nextNode();
+            if (fnH) r.setStart(fnH, 0); else r.setStart(body2, 0);
+          } else {
+            // ↑ or クリック → mup前
+            r.setStartBefore(mup2);
+          }
+        }
       } else if (el.closest('.mup-status')) {
         // 🟢スパン → em末尾へ
         var ln = em.lastChild;
