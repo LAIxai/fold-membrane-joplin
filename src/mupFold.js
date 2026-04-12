@@ -1,5 +1,9 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
+// v6.9  2026.04.12(日) 「膜の中へ移動」バグ修正 + ▶削除 + フッターemにも表示
+//                      原因①: :scope > .mup-bodyが失敗→_getBody()ヘルパーに置換
+//                      原因②: メニューmousedownでTinyMCEがカーソルを先に移動→e.preventDefault()追加
+//                      変更: ▶削除・フッターemでも「膜の中へ移動」表示(→body末尾)
 // v6.8  2026.04.12(日) ↑↓でemから脱出 + 「▶ 膜の中へ移動」コンテキストメニュー
 //                      keydown: hd em+↓→body先頭 / ft em+↓→mup後 / ft em+↑→body末尾 / hd em+↑→mup前
 //                      contextmenu: em右クリックもトリガー対象に追加。ヘッダーemのみ「膜の中へ」表示。
@@ -347,6 +351,7 @@ function _findNearestVisibleMup() {
   // \▼[CN=FOLD.CTX.PROTECT] // WYSIWYG: emのみ編集可・ラップアラウンド移動
   // .mup-hd/.mup-ft 内で em(コメント) のみ編集可。
   // ← at em先頭 → em末尾へラップ。→ at em末尾 → em先頭へラップ。
+  // ↓/↑ で膜の内外へ脱出（hd+↓→body先頭 / ft+↓→mup後 / ft+↑→body末尾 / hd+↑→mup前）
   if (document.body.getAttribute('contenteditable') === 'true') {
     // CSS: 名前・🟢スパンはポインタ禁止、emのみテキスト操作可
     var _st = document.createElement('style');
@@ -354,6 +359,15 @@ function _findNearestVisibleMup() {
       + '.mup-name,.mup-status{cursor:default!important;user-select:none!important}'
       + '.mup-hd em,.mup-ft em{cursor:text!important;user-select:text!important}';
     document.head.appendChild(_st);
+
+    // .mupの直接子である.mup-bodyを取得（:scope非依存）
+    function _getBody(mup) {
+      if (!mup) return null;
+      for (var i = 0; i < mup.children.length; i++) {
+        if (mup.children[i].classList.contains('mup-body')) return mup.children[i];
+      }
+      return null;
+    }
 
     // ヘッダー内でem以外の場所はクリック阻止（右クリックはスルー）
     document.addEventListener('mousedown', function(e) {
@@ -380,7 +394,7 @@ function _findNearestVisibleMup() {
         // ↑↓: 膜内部 / 膜外へ脱出
         var isHd = !!em.closest('.mup-hd');
         var mup  = em.closest('.mup');
-        var body = mup ? mup.querySelector(':scope > .mup-body') : null;
+        var body = _getBody(mup);
         e.preventDefault();
         if (key === 'ArrowDown') {
           if (isHd && body) {
@@ -481,6 +495,8 @@ function _findNearestVisibleMup() {
     item.style.cssText = 'padding:7px 18px;color:#333;';
     item.onmouseenter = function(){ item.style.background='#e8f0fe'; item.style.color='#1a73e8'; };
     item.onmouseleave = function(){ item.style.background=''; item.style.color='#333'; };
+    // mousedownでTinyMCEのカーソル移動を阻止（actionでカーソルを確実に制御するため）
+    item.onmousedown = function(e){ e.preventDefault(); };
     item.onclick = function(){ _hide(); action(); };
     _menu.appendChild(item);
     return item; // 参照を返す（表示制御用）
@@ -495,10 +511,9 @@ function _findNearestVisibleMup() {
     _ctxEmCur = cursorEm || null;
     // TinyMCEのノート切替でbody.innerHTMLが置換されると_menuがDOMから外れるため再アタッチ
     if (!_menu.parentNode) document.body.appendChild(_menu);
-    // 「膜の中へ」はヘッダーemにカーソルがある時だけ表示
+    // 「膜の中へ」はヘッダー/フッターemにカーソルがある時に表示
     if (_itemJumpInside) {
-      _itemJumpInside.style.display =
-        (cursorEm && cursorEm.closest('.mup-hd')) ? '' : 'none';
+      _itemJumpInside.style.display = cursorEm ? '' : 'none';
     }
     _menu.style.display = 'block';
     var mx = Math.min(x, window.innerWidth  - _menu.offsetWidth  - 8);
@@ -523,20 +538,31 @@ function _findNearestVisibleMup() {
     if (!name) return;
     navigator.clipboard.writeText(name).catch(function(){});
   });
-  // ③ 膜の中へ移動（WYSIWYGのみ・ヘッダーemにカーソルがある時のみ表示）
+  // ③ 膜の中へ移動（WYSIWYGのみ・ヘッダー/フッターemにカーソルがある時表示）
+  //    ヘッダーem → body先頭へ。フッターem → body末尾へ。
   var _itemJumpInside = null;
   if (_isWYSIWYG) {
     _addSep();
-    _itemJumpInside = _addItem('▶ 膜の中へ移動', function() {
+    _itemJumpInside = _addItem('膜の中へ移動', function() {
       var em   = _ctxEmCur;
       var mup  = em ? em.closest('.mup') : null;
-      var body = mup ? mup.querySelector(':scope > .mup-body') : null;
+      var body = _getBody(mup);
       if (!body) return;
+      var isHd = !!(em && em.closest('.mup-hd'));
       var s = window.getSelection();
       var r = document.createRange();
-      var tw = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
-      var fn = tw.nextNode();
-      if (fn) r.setStart(fn, 0); else r.setStart(body, 0);
+      if (isHd) {
+        // ヘッダーem → body先頭テキストへ
+        var tw = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
+        var fn = tw.nextNode();
+        if (fn) r.setStart(fn, 0); else r.setStart(body, 0);
+      } else {
+        // フッターem → body末尾テキストへ
+        var tw2 = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
+        var ln = null, tn;
+        while ((tn = tw2.nextNode())) ln = tn;
+        if (ln) r.setStart(ln, ln.length); else r.setStart(body, body.childNodes.length);
+      }
       r.collapse(true); s.removeAllRanges(); s.addRange(r);
     });
     _itemJumpInside.style.display = 'none'; // 初期非表示
