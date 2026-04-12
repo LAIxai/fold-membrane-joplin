@@ -1,47 +1,5 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
-// v8.1  2026.04.13(月) ft em を visibility:hidden+通常font-size に変更
-//                      TinyMCEが行として認識→開始膜と全く同じem処理ルーチンが動く
-//                      keydownのbody末尾手動ジャンプ（v8.0）は不要→削除
-// v8.0  2026.04.13(月) keydown: ↓at body末尾→ft em先頭を直接処理
-//                      TinyMCEはfont-size:0.01emのemをスキップするためkeydownで手動ジャンプ
-//                      markdownItRenderer: ft em を font-size:0→0.01em+color:transparent に変更
-// v7.9  2026.04.13(月) 根本設計を「通過点」に統一
-//                      ft/hd(emなし)で「止まらせる」が全バグの根源だった
-//                      selectionchangeで_lastArrowDir参照→即通過（ft: ↑→body末尾/↓→mup外）
-//                      keydownはem内処理のみ。_lastArrowDir記録を追加。
-//                      _skipSelChange: 自分のaddRangeによる再発火を1回スキップ
-// v7.8  2026.04.12(日) selectionchange: ft/hd(emなし)→留まる設計に変更
-//                      _skipSelChange: addRangeによる再発火を1回スキップ
-//                      ft+↑/↓はkeydownで処理（v7.7のコードを継続使用）
-//                      v7.6-7.7: 方向ベース即通過が原因でftに留まれず↑試せなかった
-// v7.7  2026.04.12(日) keydownでft/hd(emなし)を直接処理（根本修正）
-//                      原因: !em=true→即returnしてTinyMCEに丸投げ
-//                      TinyMCEはuser-select:noneだらけのftで↑を処理できず動かない
-//                      修正: ft/hd+emなし+↑↓はkeydown captureで直接preventDefault+ジャンプ
-// v7.6  2026.04.12(日) 根本設計変更: 閉じ膜は「透明な通路」
-//                      selectionchangeで_lastArrowDir参照→ft/hd(emなし)を即通過
-//                      ↑でft→body末尾 / ↓でft→mup外 / ↓でhd→body先頭 / ↑でhd→mup前
-//                      rest position廃止。keydownとの非同期連携を完全排除
-// v7.5  2026.04.12(日) stopPropagation追加 + ft/hd直接検出との二重カバー
-//                      根本原因: e.preventDefault()のみではTinyMCEバブルハンドラが
-//                      我々のaddRange後に再度カーソルを上書き → stopPropagation()で遮断
-//                      直接検出: el.closest('.mup-ft/.mup-hd') emなし → flag不要でも動作
-//                      全矢印キー処理に stopPropagation() を統一追加
-// v7.4  2026.04.12(日) FLAG変数アプローチで2バグ同時修正
-//                      Bug1: 🟢なし膜(hd emなし)→setStartAfter(hd)→↑で無限ループ
-//                      Bug2: ftrest position後の↑がCase2 offsetチェック失敗→機能しない
-//                      対策: _restFlagをselectionchangeでセット→keydown先頭で消費
-//                      hd+↓→body先頭 / hd+↑→mup前 / ft+↑→body末尾 / ft+↓→mup後
-// v7.3  2026.04.12(日) 閉じ膜rest position設計: setStartAfter(hd)=mup内安定位置
-//                      selectionchange: mup-ft(emなし) → setStartAfter(.mup-ft) = rest position
-//                      keydown Case2: rest position + ↑→body末尾 / ↓→mup外
-//                      _getFt()ヘルパー追加（_getBodyと対称）
-// v7.2  2026.04.12(日) ↑↓「外→先頭→末尾→外」サイクル実装 + 閉じ膜ループ修正
-//                      ↓em末尾でない→em末尾へ / em末尾→body先頭(hd)orAfterMup(ft)
-//                      ↑em先頭でない→em先頭へ / em先頭→body末尾(ft)orBeforeMup(hd)
-//                      selectionchange: emなしのmup-ft → setStartAfter(hd)→setStartAfter(mup)
-//                      （mup内部に留まってループする現象を根絶）
 // v7.1  2026.04.12(日) クラス名バグ修正: mup-body→mup-bd（実際のクラス名）
 //                      v7.0まで_getBody()が常にnull返却 → keydownがsetStartAfter(mup)→膜外に飛ぶ
 //                      →「フッタを飛び越える」謎の根本原因。mup-bdに修正で全て解決するはず。
@@ -396,21 +354,12 @@ function _findNearestVisibleMup() {
 (function() {
   var _isWYSIWYG = document.body.getAttribute('contenteditable') === 'true';
 
-  // .mupの直接子 .mup-bd / .mup-ft を取得（IIFEトップで定義→全セクションから参照可）
+  // .mupの直接子である.mup-bdを取得（IIFEトップで定義→全セクションから参照可）
+  // 実際のクラス名は mup-bd（mup-bodyではない）
   function _getBody(mup) {
     if (!mup) return null;
     for (var i = 0; i < mup.children.length; i++) {
       if (mup.children[i].classList.contains('mup-bd')) return mup.children[i];
-    }
-    return null;
-  }
-  var _lastArrowDir = 0;    // -1=↑/←, +1=↓/→, 0=other  selectionchangeが方向判定に使う
-  var _skipSelChange = false; // 自分のaddRangeによる再発火を1回スキップ
-
-  function _getFt(mup) {
-    if (!mup) return null;
-    for (var i = 0; i < mup.children.length; i++) {
-      if (mup.children[i].classList.contains('mup-ft')) return mup.children[i];
     }
     return null;
   }
@@ -434,58 +383,45 @@ function _findNearestVisibleMup() {
       if (t.closest('.mup-hd, .mup-ft') && !t.closest('em')) e.preventDefault();
     }, true);
 
-    // キーナビゲーション処理（em内のみ）
-    // ft/hd(emなし)の通過はselectionchangeが方向ベースで完結させる
+    // em端でのラップアラウンド＋↑↓で膜の内外へ脱出（keydownで事前阻止＋手動ジャンプ）
     document.addEventListener('keydown', function(e) {
       var key = e.key;
-      // 方向を記録（selectionchangeが参照）
-      if      (key === 'ArrowUp'   || key === 'ArrowLeft')  _lastArrowDir = -1;
-      else if (key === 'ArrowDown' || key === 'ArrowRight') _lastArrowDir =  1;
-      else { _lastArrowDir = 0; return; }
-
+      if (key !== 'ArrowLeft' && key !== 'ArrowRight'
+       && key !== 'ArrowUp'   && key !== 'ArrowDown') return;
       var sel = window.getSelection();
       if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return;
       var range = sel.getRangeAt(0);
       var node = range.startContainer;
       var el = (node.nodeType === 3) ? node.parentElement : node;
-
-      // em内・hd/ft内のみ処理。emなしft/hdはselectionchangeに任せる。
       var em = el.closest('em');
-      if (!em || !el.closest('.mup-hd, .mup-ft')) return;
+      if (!em || !el.closest('.mup-hd, .mup-ft')) return; // em内・ヘッダー内のみ処理
       var r = document.createRange();
 
-      if (key === 'ArrowUp' || key === 'ArrowDown') {
-        // em内↑↓: 「先頭→末尾→外」サイクル
-        var isHd  = !!em.closest('.mup-hd');
-        var mup   = em.closest('.mup');
-        var body  = _getBody(mup);
-        var lastCh = em.lastChild;
-        var atEnd  = (lastCh && lastCh.nodeType === 3
-                      && node === lastCh && range.startOffset === lastCh.length)
-                  || (node === em && range.startOffset === em.childNodes.length);
-        var atStart = (node.nodeType === 3 && node === em.firstChild && range.startOffset === 0)
-                   || (node === em && range.startOffset === 0);
-        e.preventDefault(); e.stopPropagation();
-
+      if (key === 'ArrowDown' || key === 'ArrowUp') {
+        // ↑↓: 膜内部 / 膜外へ脱出
+        var isHd = !!em.closest('.mup-hd');
+        var mup  = em.closest('.mup');
+        var body = _getBody(mup);
+        e.preventDefault();
         if (key === 'ArrowDown') {
-          if (!atEnd) {
-            r.setStart(lastCh, lastCh.nodeType === 3 ? lastCh.length : lastCh.childNodes.length);
-          } else if (isHd && body) {
+          if (isHd && body) {
+            // ヘッダーem+↓ → body先頭テキストへ
             var tw = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
             var fn = tw.nextNode();
             if (fn) r.setStart(fn, 0); else r.setStart(body, 0);
           } else {
+            // フッターem+↓ → mup全体の後へ
             r.setStartAfter(mup || em.closest('.mup-ft'));
           }
         } else {
-          if (!atStart) {
-            r.setStart(em.firstChild, 0);
-          } else if (!isHd && body) {
+          if (!isHd && body) {
+            // フッターem+↑ → body末尾テキストへ
             var tw2 = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
             var ln = null, tn;
             while ((tn = tw2.nextNode())) ln = tn;
             if (ln) r.setStart(ln, ln.length); else r.setStart(body, body.childNodes.length);
           } else {
+            // ヘッダーem+↑ → mup全体の前へ
             r.setStartBefore(mup || em.closest('.mup-hd'));
           }
         }
@@ -494,77 +430,51 @@ function _findNearestVisibleMup() {
       }
 
       if (key === 'ArrowLeft') {
-        var atStart2 = (node.nodeType === 3 && node === em.firstChild && range.startOffset === 0)
-                    || (node === em && range.startOffset === 0);
-        if (!atStart2) return;
-        e.preventDefault(); e.stopPropagation();
+        // em先頭でLeft → em末尾へラップ
+        var atStart = (node.nodeType === 3 && node === em.firstChild && range.startOffset === 0)
+                   || (node === em && range.startOffset === 0);
+        if (!atStart) return;
+        e.preventDefault();
         var last = em.lastChild;
         r.setStart(last, last.nodeType === 3 ? last.length : last.childNodes.length);
         r.collapse(true); sel.removeAllRanges(); sel.addRange(r);
       } else {
-        var lastChild2 = em.lastChild;
-        var atEnd2 = (lastChild2 && lastChild2.nodeType === 3 && node === lastChild2
-                      && range.startOffset === lastChild2.length)
-                  || (node === em && range.startOffset === em.childNodes.length);
-        if (!atEnd2) return;
-        e.preventDefault(); e.stopPropagation();
-        r.setStart(em.firstChild, 0);
+        // em末尾でRight → em先頭へラップ
+        var lastChild = em.lastChild;
+        var atEnd = (lastChild && lastChild.nodeType === 3 && node === lastChild
+                     && range.startOffset === lastChild.length)
+                 || (node === em && range.startOffset === em.childNodes.length);
+        if (!atEnd) return;
+        e.preventDefault();
+        var first = em.firstChild;
+        r.setStart(first, 0);
         r.collapse(true); sel.removeAllRanges(); sel.addRange(r);
       }
     }, true);
 
-    // hd/ft侵入ガード: emなし→ft/hdの末尾に留まる / emあり→em内へ誘導
+    // フォールバック: クリック等でem外にカーソルが入った場合の追い出し
     document.addEventListener('selectionchange', function() {
-      if (_skipSelChange) { _skipSelChange = false; return; } // 自分が起こした再発火をスキップ
       var sel = window.getSelection();
       if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return;
       var range = sel.getRangeAt(0);
       var node = range.startContainer;
       var el = (node.nodeType === 3) ? node.parentElement : node;
       if (!el.closest('.mup-hd, .mup-ft') || el.closest('em')) return;
-      var hd  = el.closest('.mup-hd, .mup-ft');
-      var em  = hd ? hd.querySelector('em') : null;
-      var r   = document.createRange();
-
-      if (!em) {
-        // emなし(ft or hd): 方向ベース即通過（透明な通路）
-        // ↑でft → body末尾 / ↓でft → mup外 / ↓でhd → body先頭 / ↑でhd → mup前
-        var isFt = !!el.closest('.mup-ft');
-        var mup2 = hd.closest('.mup');
-        var body2 = _getBody(mup2);
-        _skipSelChange = true;
-        if (isFt) {
-          if (_lastArrowDir < 0 && body2) {
-            // ↑でft → body末尾
-            var twF = document.createTreeWalker(body2, NodeFilter.SHOW_TEXT, null, false);
-            var lnF = null, tnF;
-            while ((tnF = twF.nextNode())) lnF = tnF;
-            if (lnF) r.setStart(lnF, lnF.length); else r.setStart(body2, body2.childNodes.length);
-          } else {
-            // ↓ or クリック → mup外
-            r.setStartAfter(mup2);
-          }
-        } else {
-          // hd(emなし)
-          if (_lastArrowDir > 0 && body2) {
-            // ↓でhd → body先頭
-            var twH = document.createTreeWalker(body2, NodeFilter.SHOW_TEXT, null, false);
-            var fnH = twH.nextNode();
-            if (fnH) r.setStart(fnH, 0); else r.setStart(body2, 0);
-          } else {
-            // ↑ or クリック → mup前
-            r.setStartBefore(mup2);
-          }
-        }
-      } else if (el.closest('.mup-status')) {
+      var hd = el.closest('.mup-hd, .mup-ft');
+      var em = hd ? hd.querySelector('em') : null;
+      var r = document.createRange();
+      if (el.closest('.mup-status')) {
         // 🟢スパン → em末尾へ
-        var ln = em.lastChild;
+        var ln = em && em.lastChild;
         if (ln) r.setStart(ln, ln.nodeType === 3 ? ln.length : ln.childNodes.length);
-        else r.setStart(em, em.childNodes.length);
+        else if (em) r.setStart(em, em.childNodes.length);
+        else r.setStartAfter(hd);
       } else {
         // 名前・バッジ等 → em先頭へ
-        var fn = em.firstChild;
-        if (fn) r.setStart(fn, 0); else r.setStart(em, 0);
+        var fn = em && em.firstChild;
+        if (fn) r.setStart(fn, 0);
+        else if (em) r.setStart(em, 0);
+        else r.setStartAfter(hd);
       }
       r.collapse(true); sel.removeAllRanges(); sel.addRange(r);
     });
