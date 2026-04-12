@@ -1,5 +1,9 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
+// v7.3  2026.04.12(日) 閉じ膜rest position設計: setStartAfter(hd)=mup内安定位置
+//                      selectionchange: mup-ft(emなし) → setStartAfter(.mup-ft) = rest position
+//                      keydown Case2: rest position + ↑→body末尾 / ↓→mup外
+//                      _getFt()ヘルパー追加（_getBodyと対称）
 // v7.2  2026.04.12(日) ↑↓「外→先頭→末尾→外」サイクル実装 + 閉じ膜ループ修正
 //                      ↓em末尾でない→em末尾へ / em末尾→body先頭(hd)orAfterMup(ft)
 //                      ↑em先頭でない→em先頭へ / em先頭→body末尾(ft)orBeforeMup(hd)
@@ -359,12 +363,18 @@ function _findNearestVisibleMup() {
 (function() {
   var _isWYSIWYG = document.body.getAttribute('contenteditable') === 'true';
 
-  // .mupの直接子である.mup-bdを取得（IIFEトップで定義→全セクションから参照可）
-  // 実際のクラス名は mup-bd（mup-bodyではない）
+  // .mupの直接子 .mup-bd / .mup-ft を取得（IIFEトップで定義→全セクションから参照可）
   function _getBody(mup) {
     if (!mup) return null;
     for (var i = 0; i < mup.children.length; i++) {
       if (mup.children[i].classList.contains('mup-bd')) return mup.children[i];
+    }
+    return null;
+  }
+  function _getFt(mup) {
+    if (!mup) return null;
+    for (var i = 0; i < mup.children.length; i++) {
+      if (mup.children[i].classList.contains('mup-ft')) return mup.children[i];
     }
     return null;
   }
@@ -398,6 +408,35 @@ function _findNearestVisibleMup() {
       var range = sel.getRangeAt(0);
       var node = range.startContainer;
       var el = (node.nodeType === 3) ? node.parentElement : node;
+
+      // Case 2: rest position（.mup直下・.mup-ft直後）での↑↓処理
+      // selectionchangeがmup-ftからrest positionへ誘導した後、ここで↑↓を捌く
+      if ((key === 'ArrowUp' || key === 'ArrowDown')
+          && node.nodeType === 1 && node.classList && node.classList.contains('mup')) {
+        var ftEl = _getFt(node);
+        if (ftEl) {
+          var ftIdx = Array.prototype.indexOf.call(node.childNodes, ftEl);
+          if (range.startOffset === ftIdx + 1) {
+            // rest position確認: .mup-ftの直後
+            e.preventDefault();
+            var body = _getBody(node);
+            var rr = document.createRange();
+            if (key === 'ArrowUp' && body) {
+              // ↑ → body末尾へ
+              var tw0 = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
+              var ln0 = null, tn0;
+              while ((tn0 = tw0.nextNode())) ln0 = tn0;
+              if (ln0) rr.setStart(ln0, ln0.length); else rr.setStart(body, body.childNodes.length);
+            } else {
+              // ↓ → mup全体の外へ
+              rr.setStartAfter(node);
+            }
+            rr.collapse(true); sel.removeAllRanges(); sel.addRange(rr);
+            return;
+          }
+        }
+      }
+
       var em = el.closest('em');
       if (!em || !el.closest('.mup-hd, .mup-ft')) return; // em内・ヘッダー内のみ処理
       var r = document.createRange();
@@ -485,8 +524,9 @@ function _findNearestVisibleMup() {
       var mup = hd ? hd.closest('.mup') : null;
       var r = document.createRange();
       if (!em) {
-        // emなし（フッターなど）→ mup全体の外に出す（setStartAfter(hd)ではmup内に留まりループする）
-        if (mup) r.setStartAfter(mup); else r.setStartAfter(hd);
+        // emなし（フッターなど）→ .mup-ftの直後（rest position: mup内だがmup-ft外）
+        // この安定位置はselectionchangeを再発火しない。keydown Case 2が↑↓を捌く。
+        r.setStartAfter(hd);
       } else if (el.closest('.mup-status')) {
         // 🟢スパン → em末尾へ
         var ln = em.lastChild;
