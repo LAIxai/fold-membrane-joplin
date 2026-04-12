@@ -1,5 +1,10 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
+// v7.4  2026.04.12(日) FLAG変数アプローチで2バグ同時修正
+//                      Bug1: 🟢なし膜(hd emなし)→setStartAfter(hd)→↑で無限ループ
+//                      Bug2: ftrest position後の↑がCase2 offsetチェック失敗→機能しない
+//                      対策: _restFlagをselectionchangeでセット→keydown先頭で消費
+//                      hd+↓→body先頭 / hd+↑→mup前 / ft+↑→body末尾 / ft+↓→mup後
 // v7.3  2026.04.12(日) 閉じ膜rest position設計: setStartAfter(hd)=mup内安定位置
 //                      selectionchange: mup-ft(emなし) → setStartAfter(.mup-ft) = rest position
 //                      keydown Case2: rest position + ↑→body末尾 / ↓→mup外
@@ -371,6 +376,8 @@ function _findNearestVisibleMup() {
     }
     return null;
   }
+  var _restFlag = null; // { mup, type:'hd'|'ft' } selectionchange→keydownへrest位置情報を渡す
+
   function _getFt(mup) {
     if (!mup) return null;
     for (var i = 0; i < mup.children.length; i++) {
@@ -401,6 +408,9 @@ function _findNearestVisibleMup() {
     // em端でのラップアラウンド＋↑↓で膜の内外へ脱出（keydownで事前阻止＋手動ジャンプ）
     document.addEventListener('keydown', function(e) {
       var key = e.key;
+      // _restFlagはどのkeydownでも消費（use it or lose it）
+      var flag = _restFlag; _restFlag = null;
+
       if (key !== 'ArrowLeft' && key !== 'ArrowRight'
        && key !== 'ArrowUp'   && key !== 'ArrowDown') return;
       var sel = window.getSelection();
@@ -409,32 +419,36 @@ function _findNearestVisibleMup() {
       var node = range.startContainer;
       var el = (node.nodeType === 3) ? node.parentElement : node;
 
-      // Case 2: rest position（.mup直下・.mup-ft直後）での↑↓処理
-      // selectionchangeがmup-ftからrest positionへ誘導した後、ここで↑↓を捌く
-      if ((key === 'ArrowUp' || key === 'ArrowDown')
-          && node.nodeType === 1 && node.classList && node.classList.contains('mup')) {
-        var ftEl = _getFt(node);
-        if (ftEl) {
-          var ftIdx = Array.prototype.indexOf.call(node.childNodes, ftEl);
-          if (range.startOffset === ftIdx + 1) {
-            // rest position確認: .mup-ftの直後
-            e.preventDefault();
-            var body = _getBody(node);
-            var rr = document.createRange();
-            if (key === 'ArrowUp' && body) {
-              // ↑ → body末尾へ
-              var tw0 = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
-              var ln0 = null, tn0;
-              while ((tn0 = tw0.nextNode())) ln0 = tn0;
-              if (ln0) rr.setStart(ln0, ln0.length); else rr.setStart(body, body.childNodes.length);
-            } else {
-              // ↓ → mup全体の外へ
-              rr.setStartAfter(node);
-            }
-            rr.collapse(true); sel.removeAllRanges(); sel.addRange(rr);
-            return;
+      // FLAG: rest position後の↑↓処理（TinyMCEのカーソル正規化に依存しない確実な方式）
+      // selectionchangeがhd/ft(emなし)→rest positionへ誘導した直後に↑↓で脱出
+      if (flag && (key === 'ArrowUp' || key === 'ArrowDown')) {
+        e.preventDefault();
+        var body = _getBody(flag.mup);
+        var rr = document.createRange();
+        if (flag.type === 'ft') {
+          if (key === 'ArrowUp' && body) {
+            // ft+↑ → body末尾へ
+            var tw0 = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
+            var ln0 = null, tn0;
+            while ((tn0 = tw0.nextNode())) ln0 = tn0;
+            if (ln0) rr.setStart(ln0, ln0.length); else rr.setStart(body, body.childNodes.length);
+          } else {
+            // ft+↓ → mup全体の後へ
+            rr.setStartAfter(flag.mup);
+          }
+        } else { // 'hd'
+          if (key === 'ArrowDown' && body) {
+            // hd+↓ → body先頭へ
+            var tw1 = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
+            var fn1 = tw1.nextNode();
+            if (fn1) rr.setStart(fn1, 0); else rr.setStart(body, 0);
+          } else {
+            // hd+↑ → mup全体の前へ
+            rr.setStartBefore(flag.mup);
           }
         }
+        rr.collapse(true); sel.removeAllRanges(); sel.addRange(rr);
+        return;
       }
 
       var em = el.closest('em');
@@ -524,8 +538,10 @@ function _findNearestVisibleMup() {
       var mup = hd ? hd.closest('.mup') : null;
       var r = document.createRange();
       if (!em) {
-        // emなし（フッターなど）→ .mup-ftの直後（rest position: mup内だがmup-ft外）
-        // この安定位置はselectionchangeを再発火しない。keydown Case 2が↑↓を捌く。
+        // emなし（hd/ft問わず）→ hd直後（rest position: mup内・安定位置）
+        // _restFlagで「hd」か「ft」かをkeydownへ伝達→↑↓を確実に捌く
+        var isHdEl = !!el.closest('.mup-hd');
+        _restFlag = { mup: mup, type: isHdEl ? 'hd' : 'ft' };
         r.setStartAfter(hd);
       } else if (el.closest('.mup-status')) {
         // 🟢スパン → em末尾へ
