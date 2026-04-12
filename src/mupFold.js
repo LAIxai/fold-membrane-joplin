@@ -1,5 +1,8 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
+// v6.5  2026.04.12(日) バッジ操作バグ修正: hd.querySelector('.mup-status')→'.mup-badge'
+//                      v6.3のクラス名変更(mup-status→mup-badge)後、stElが🟢スパンを指していた
+//                      → mupStatusDraw/Incrが🟢スパンに書き込みnull表示・カウントリセット
 // v6.4  2026.04.12(日) バグ#1修正: WYSIWYGで🟢スパンにカーソルが入るバグ
 //                      FOLD.CTX.PROTECT: .mup-statusを編集可ゾーンから外す。selectionchangeで
 //                      .mup-statusに入ったらem末尾へ（←キーの対称バウンス）
@@ -243,7 +246,7 @@ document.addEventListener('click', function(e) {
   var hd   = mup.querySelector('.mup-hd');
   var bd   = mup.querySelector('.mup-bd');
   var ico  = hd ? hd.querySelector('.mup-ico') : null;
-  var stEl = hd ? hd.querySelector('.mup-status') : null;
+  var stEl = hd ? hd.querySelector('.mup-badge') : null; // v6.5: mup-status→mup-badge（v6.3クラス名変更に追従）
   if (!bd || !ico) return;
   var sym    = mup.getAttribute('data-mup-sym');
   var isOpen = bd.style.display !== 'none';
