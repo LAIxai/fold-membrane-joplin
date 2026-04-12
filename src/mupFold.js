@@ -1,5 +1,9 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
+// v6.6  2026.04.12(日) ←キーフラッシュ根本解決: selectionchange(事後)→keydownキャプチャ(事前阻止)
+//                      em先頭でArrowLeft → preventDefault（mup-statusへの進入を完全ブロック）
+//                      em末尾でArrowRight → preventDefault（mup-badgeへの進入を完全ブロック）
+//                      selectionchangeは残置（クリック等の念のためフォールバック）
 // v6.5  2026.04.12(日) バッジ操作バグ修正: hd.querySelector('.mup-status')→'.mup-badge'
 //                      v6.3のクラス名変更(mup-status→mup-badge)後、stElが🟢スパンを指していた
 //                      → mupStatusDraw/Incrが🟢スパンに書き込みnull表示・カウントリセット
@@ -364,7 +368,37 @@ function _findNearestVisibleMup() {
       if (_inNameZone(e.target)) e.preventDefault();
     }, true);
 
-    // ② selectionchange 監視: キーボードナビで保護ゾーンに入ったら追い出す
+    // ③ keydown キャプチャ: 矢印キーで保護ゾーンへの進入を事前阻止（根本解決）
+    // em先頭でArrowLeft → mup-statusへ進入する前にpreventDefault
+    // em末尾でArrowRight → mup-badgeへ進入する前にpreventDefault
+    document.addEventListener('keydown', function(e) {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      var sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return;
+      var range = sel.getRangeAt(0);
+      var node = range.startContainer;
+      var el = (node.nodeType === 3) ? node.parentElement : node;
+      if (!el.closest('.mup-hd, .mup-ft')) return; // ヘッダー・フッター外はスルー
+      if (!el.closest('em')) return;                // em内にいる場合のみ処理
+      var hd = el.closest('.mup-hd, .mup-ft');
+      var em = hd ? hd.querySelector('em') : null;
+      if (!em) return;
+      if (e.key === 'ArrowLeft') {
+        // em先頭（offset 0）でLeft → mup-statusへの進入を阻止
+        var atStart = (node === em.firstChild && node.nodeType === 3 && range.startOffset === 0)
+                   || (node === em && range.startOffset === 0);
+        if (atStart) e.preventDefault();
+      } else {
+        // em末尾でRight → mup-badgeへの進入を阻止
+        var lastChild = em.lastChild;
+        var atEnd = (lastChild && lastChild.nodeType === 3 && node === lastChild
+                     && range.startOffset === lastChild.length)
+                 || (node === em && range.startOffset === em.childNodes.length);
+        if (atEnd) e.preventDefault();
+      }
+    }, true);
+
+    // ② selectionchange 監視: フォールバック（クリック等でも保護ゾーンには入れない）
     // 追い出し先: .mup-status(🟢)に入った場合→emの末尾（←キーとの対称バウンス）
     //            それ以外(.mup-name/.mup-badge等)→emの先頭（→キーとの対称バウンス）
     document.addEventListener('selectionchange', function() {
