@@ -1,5 +1,8 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
+// v8.0  2026.04.13(月) keydown: ↓at body末尾→ft em先頭を直接処理
+//                      TinyMCEはfont-size:0.01emのemをスキップするためkeydownで手動ジャンプ
+//                      markdownItRenderer: ft em を font-size:0→0.01em+color:transparent に変更
 // v7.9  2026.04.13(月) 根本設計を「通過点」に統一
 //                      ft/hd(emなし)で「止まらせる」が全バグの根源だった
 //                      selectionchangeで_lastArrowDir参照→即通過（ft: ↑→body末尾/↓→mup外）
@@ -442,6 +445,32 @@ function _findNearestVisibleMup() {
       var range = sel.getRangeAt(0);
       var node = range.startContainer;
       var el = (node.nodeType === 3) ? node.parentElement : node;
+
+      // ↓ at mup-bd末尾 → ft em先頭へ手動ジャンプ（TinyMCEに任せると飛び越える）
+      if (key === 'ArrowDown' && !el.closest('.mup-hd, .mup-ft')) {
+        var inBd = el.closest('.mup-bd');
+        if (inBd) {
+          var mupP = inBd.closest('.mup');
+          var ftEl2 = _getFt(mupP);
+          var ftEm2 = ftEl2 && ftEl2.querySelector('em');
+          if (ftEm2) {
+            var twd = document.createTreeWalker(inBd, NodeFilter.SHOW_TEXT, null, false);
+            var lastTn = null, tnd;
+            while ((tnd = twd.nextNode())) lastTn = tnd;
+            var atBdEnd = lastTn
+              ? (node === lastTn && range.startOffset === lastTn.length)
+              : (node === inBd && range.startOffset === inBd.childNodes.length);
+            if (atBdEnd) {
+              e.preventDefault(); e.stopPropagation();
+              var rbd = document.createRange();
+              var fc = ftEm2.firstChild;
+              rbd.setStart(fc || ftEm2, 0);
+              rbd.collapse(true); sel.removeAllRanges(); sel.addRange(rbd);
+              return;
+            }
+          }
+        }
+      }
 
       // em内・hd/ft内のみ処理。emなしft/hdはselectionchangeに任せる。
       var em = el.closest('em');

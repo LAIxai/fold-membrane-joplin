@@ -1,7 +1,7 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 6.4
+ * @version 6.5
  * @date    2026.04.13(月)
  * @desc    v6.4: 閉じ膜に<em style="font-size:0"> </em>を追加。開始膜と同一のem処理コードが適用される。
  * @desc    v6.3: 開始膜の🟢位置修正: バッジ<code>をmup-badge化し、mup-name直後に空span.mup-statusを追加。
@@ -222,7 +222,7 @@ function buildMupHtmlMap(blocks, lines){
         +'<span class="mup-ico" style="cursor:default">'+csym+'</span>'
         +'<span class="mup-name mup-pfx-'+escH(b.pfx)+'" style="font-family:monospace;color:#aaa;cursor:default"> '+escH(cn)+'</span>'
         +'<span class="mup-status"></span>'
-        +'<em style="font-size:0"> </em>'
+        +'<em style="color:transparent;font-size:0.01em"> </em>'
         +'</span>'
         +'</div>'
         +'</div>'  // mup-bd
