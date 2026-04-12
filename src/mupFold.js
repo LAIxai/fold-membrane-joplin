@@ -1,5 +1,10 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
+// v7.5  2026.04.12(日) stopPropagation追加 + ft/hd直接検出との二重カバー
+//                      根本原因: e.preventDefault()のみではTinyMCEバブルハンドラが
+//                      我々のaddRange後に再度カーソルを上書き → stopPropagation()で遮断
+//                      直接検出: el.closest('.mup-ft/.mup-hd') emなし → flag不要でも動作
+//                      全矢印キー処理に stopPropagation() を統一追加
 // v7.4  2026.04.12(日) FLAG変数アプローチで2バグ同時修正
 //                      Bug1: 🟢なし膜(hd emなし)→setStartAfter(hd)→↑で無限ループ
 //                      Bug2: ftrest position後の↑がCase2 offsetチェック失敗→機能しない
@@ -419,36 +424,46 @@ function _findNearestVisibleMup() {
       var node = range.startContainer;
       var el = (node.nodeType === 3) ? node.parentElement : node;
 
-      // FLAG: rest position後の↑↓処理（TinyMCEのカーソル正規化に依存しない確実な方式）
-      // selectionchangeがhd/ft(emなし)→rest positionへ誘導した直後に↑↓で脱出
-      if (flag && (key === 'ArrowUp' || key === 'ArrowDown')) {
-        e.preventDefault();
-        var body = _getBody(flag.mup);
-        var rr = document.createRange();
-        if (flag.type === 'ft') {
-          if (key === 'ArrowUp' && body) {
-            // ft+↑ → body末尾へ
-            var tw0 = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
-            var ln0 = null, tn0;
-            while ((tn0 = tw0.nextNode())) ln0 = tn0;
-            if (ln0) rr.setStart(ln0, ln0.length); else rr.setStart(body, body.childNodes.length);
-          } else {
-            // ft+↓ → mup全体の後へ
-            rr.setStartAfter(flag.mup);
-          }
-        } else { // 'hd'
-          if (key === 'ArrowDown' && body) {
-            // hd+↓ → body先頭へ
-            var tw1 = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
-            var fn1 = tw1.nextNode();
-            if (fn1) rr.setStart(fn1, 0); else rr.setStart(body, 0);
-          } else {
-            // hd+↑ → mup全体の前へ
-            rr.setStartBefore(flag.mup);
+      // ↑↓: ft/hd(emなし)からの脱出 — FLAG + 直接検出の二重カバー
+      // FLAG: selectionchangeがrest positionへ誘導した後の↑↓を確実に捌く
+      // 直接検出: TinyMCEがカーソルをft/hd内に置いている場合にも対応
+      if (key === 'ArrowUp' || key === 'ArrowDown') {
+        var inFtEl = el.closest('.mup-ft') && !el.closest('em') ? el.closest('.mup-ft') : null;
+        var inHdEl = !inFtEl && el.closest('.mup-hd') && !el.closest('em') ? el.closest('.mup-hd') : null;
+        if (inFtEl || inHdEl || flag) {
+          var tMup  = flag ? flag.mup  : (inFtEl ? inFtEl.closest('.mup') : inHdEl.closest('.mup'));
+          var tType = flag ? flag.type : (inFtEl ? 'ft' : 'hd');
+          if (tMup) {
+            e.preventDefault();
+            e.stopPropagation(); // TinyMCEのバブル処理を完全遮断
+            var tBody = _getBody(tMup);
+            var rr = document.createRange();
+            if (tType === 'ft') {
+              if (key === 'ArrowUp' && tBody) {
+                // ft+↑ → body末尾へ
+                var tw0 = document.createTreeWalker(tBody, NodeFilter.SHOW_TEXT, null, false);
+                var ln0 = null, tn0;
+                while ((tn0 = tw0.nextNode())) ln0 = tn0;
+                if (ln0) rr.setStart(ln0, ln0.length); else rr.setStart(tBody, tBody.childNodes.length);
+              } else {
+                // ft+↓ → mup全体の後へ
+                rr.setStartAfter(tMup);
+              }
+            } else { // 'hd'
+              if (key === 'ArrowDown' && tBody) {
+                // hd+↓ → body先頭へ
+                var tw1 = document.createTreeWalker(tBody, NodeFilter.SHOW_TEXT, null, false);
+                var fn1 = tw1.nextNode();
+                if (fn1) rr.setStart(fn1, 0); else rr.setStart(tBody, 0);
+              } else {
+                // hd+↑ → mup全体の前へ
+                rr.setStartBefore(tMup);
+              }
+            }
+            rr.collapse(true); sel.removeAllRanges(); sel.addRange(rr);
+            return;
           }
         }
-        rr.collapse(true); sel.removeAllRanges(); sel.addRange(rr);
-        return;
       }
 
       var em = el.closest('em');
@@ -469,6 +484,7 @@ function _findNearestVisibleMup() {
         var atStart = (node.nodeType === 3 && node === em.firstChild && range.startOffset === 0)
                    || (node === em && range.startOffset === 0);
         e.preventDefault();
+        e.stopPropagation(); // TinyMCEのバブル処理を完全遮断
 
         if (key === 'ArrowDown') {
           if (!atEnd) {
@@ -507,7 +523,7 @@ function _findNearestVisibleMup() {
         var atStart = (node.nodeType === 3 && node === em.firstChild && range.startOffset === 0)
                    || (node === em && range.startOffset === 0);
         if (!atStart) return;
-        e.preventDefault();
+        e.preventDefault(); e.stopPropagation();
         var last = em.lastChild;
         r.setStart(last, last.nodeType === 3 ? last.length : last.childNodes.length);
         r.collapse(true); sel.removeAllRanges(); sel.addRange(r);
@@ -518,7 +534,7 @@ function _findNearestVisibleMup() {
                      && range.startOffset === lastChild.length)
                  || (node === em && range.startOffset === em.childNodes.length);
         if (!atEnd) return;
-        e.preventDefault();
+        e.preventDefault(); e.stopPropagation();
         var first = em.firstChild;
         r.setStart(first, 0);
         r.collapse(true); sel.removeAllRanges(); sel.addRange(r);
