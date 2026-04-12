@@ -1,5 +1,9 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
+// v7.8  2026.04.12(日) selectionchange: ft/hd(emなし)→留まる設計に変更
+//                      _skipSelChange: addRangeによる再発火を1回スキップ
+//                      ft+↑/↓はkeydownで処理（v7.7のコードを継続使用）
+//                      v7.6-7.7: 方向ベース即通過が原因でftに留まれず↑試せなかった
 // v7.7  2026.04.12(日) keydownでft/hd(emなし)を直接処理（根本修正）
 //                      原因: !em=true→即returnしてTinyMCEに丸投げ
 //                      TinyMCEはuser-select:noneだらけのftで↑を処理できず動かない
@@ -389,7 +393,7 @@ function _findNearestVisibleMup() {
     }
     return null;
   }
-  var _lastArrowDir = 0; // -1=↑↙, 1=↓↘, 0=その他 selectionchangeが方向ベース通過判定に使う
+  var _skipSelChange = false; // selectionchangeが自分でaddRangeした後の再発火を1回スキップ
 
   function _getFt(mup) {
     if (!mup) return null;
@@ -418,13 +422,11 @@ function _findNearestVisibleMup() {
       if (t.closest('.mup-hd, .mup-ft') && !t.closest('em')) e.preventDefault();
     }, true);
 
-    // 方向記録 + em内処理（ft/hdemなし通過はselectionchangeで完結）
+    // キーナビゲーション処理
     document.addEventListener('keydown', function(e) {
       var key = e.key;
-      // 方向を記録（selectionchangeが参照する）
-      if      (key === 'ArrowUp'   || key === 'ArrowLeft')  _lastArrowDir = -1;
-      else if (key === 'ArrowDown' || key === 'ArrowRight') _lastArrowDir =  1;
-      else { _lastArrowDir = 0; return; }
+      if (key !== 'ArrowLeft' && key !== 'ArrowRight'
+       && key !== 'ArrowUp'   && key !== 'ArrowDown') return;
 
       var sel = window.getSelection();
       if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return;
@@ -522,8 +524,9 @@ function _findNearestVisibleMup() {
       }
     }, true);
 
-    // hd/ft侵入ガード: emなし→方向ベース即通過 / emあり→em内へ誘導
+    // hd/ft侵入ガード: emなし→ft/hdの末尾に留まる / emあり→em内へ誘導
     document.addEventListener('selectionchange', function() {
+      if (_skipSelChange) { _skipSelChange = false; return; } // 自分が起こした再発火をスキップ
       var sel = window.getSelection();
       if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return;
       var range = sel.getRangeAt(0);
@@ -532,45 +535,22 @@ function _findNearestVisibleMup() {
       if (!el.closest('.mup-hd, .mup-ft') || el.closest('em')) return;
       var hd  = el.closest('.mup-hd, .mup-ft');
       var em  = hd ? hd.querySelector('em') : null;
-      var mup = hd ? hd.closest('.mup') : null;
       var r   = document.createRange();
 
       if (!em) {
-        // emなし（hd or ft）→ _lastArrowDirで即通過（透明な通路）
-        var isFt   = !!el.closest('.mup-ft');
-        var body   = _getBody(mup);
-        if (isFt) {
-          if (_lastArrowDir === -1 && body) {
-            // ↑でftに入った → body末尾へ
-            var tw = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
-            var ln = null, tn;
-            while ((tn = tw.nextNode())) ln = tn;
-            if (ln) r.setStart(ln, ln.length); else r.setStart(body, body.childNodes.length);
-          } else {
-            // ↓ or クリック → mup外へ
-            r.setStartAfter(mup);
-          }
-        } else {
-          // hd(emなし)
-          if (_lastArrowDir === 1 && body) {
-            // ↓でhdに入った → body先頭へ
-            var tw2 = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
-            var fn2 = tw2.nextNode();
-            if (fn2) r.setStart(fn2, 0); else r.setStart(body, 0);
-          } else {
-            // ↑ or クリック → mup前へ
-            r.setStartBefore(mup);
-          }
-        }
+        // emなし(ft or hd): その要素の末尾に留まる
+        // keydownがここを検出して↑↓を処理する
+        _skipSelChange = true; // 次のselectionchange(addRangeによる再発火)をスキップ
+        r.setStart(hd, hd.childNodes.length);
       } else if (el.closest('.mup-status')) {
         // 🟢スパン → em末尾へ
-        var ln2 = em.lastChild;
-        if (ln2) r.setStart(ln2, ln2.nodeType === 3 ? ln2.length : ln2.childNodes.length);
+        var ln = em.lastChild;
+        if (ln) r.setStart(ln, ln.nodeType === 3 ? ln.length : ln.childNodes.length);
         else r.setStart(em, em.childNodes.length);
       } else {
         // 名前・バッジ等 → em先頭へ
-        var fn3 = em.firstChild;
-        if (fn3) r.setStart(fn3, 0); else r.setStart(em, 0);
+        var fn = em.firstChild;
+        if (fn) r.setStart(fn, 0); else r.setStart(em, 0);
       }
       r.collapse(true); sel.removeAllRanges(); sel.addRange(r);
     });
