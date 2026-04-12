@@ -1,5 +1,8 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
+// v6.8  2026.04.12(日) ↑↓でemから脱出 + 「▶ 膜の中へ移動」コンテキストメニュー
+//                      keydown: hd em+↓→body先頭 / ft em+↓→mup後 / ft em+↑→body末尾 / hd em+↑→mup前
+//                      contextmenu: em右クリックもトリガー対象に追加。ヘッダーemのみ「膜の中へ」表示。
 // v6.7  2026.04.12(日) ラップアラウンド移動: em先頭で← → em末尾へ、em末尾で→ → em先頭へ
 //                      keydown(事前)でpreventDefault+手動ジャンプ。フラッシュ完全消去。
 //                      selectionchangeはフォールバック（クリック等）として残置。コード整理。
@@ -359,9 +362,11 @@ function _findNearestVisibleMup() {
       if (t.closest('.mup-hd, .mup-ft') && !t.closest('em')) e.preventDefault();
     }, true);
 
-    // em端でのラップアラウンド移動（keydownで事前阻止＋手動ジャンプ）
+    // em端でのラップアラウンド＋↑↓で膜の内外へ脱出（keydownで事前阻止＋手動ジャンプ）
     document.addEventListener('keydown', function(e) {
-      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      var key = e.key;
+      if (key !== 'ArrowLeft' && key !== 'ArrowRight'
+       && key !== 'ArrowUp'   && key !== 'ArrowDown') return;
       var sel = window.getSelection();
       if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return;
       var range = sel.getRangeAt(0);
@@ -369,13 +374,46 @@ function _findNearestVisibleMup() {
       var el = (node.nodeType === 3) ? node.parentElement : node;
       var em = el.closest('em');
       if (!em || !el.closest('.mup-hd, .mup-ft')) return; // em内・ヘッダー内のみ処理
-      if (e.key === 'ArrowLeft') {
+      var r = document.createRange();
+
+      if (key === 'ArrowDown' || key === 'ArrowUp') {
+        // ↑↓: 膜内部 / 膜外へ脱出
+        var isHd = !!em.closest('.mup-hd');
+        var mup  = em.closest('.mup');
+        var body = mup ? mup.querySelector(':scope > .mup-body') : null;
+        e.preventDefault();
+        if (key === 'ArrowDown') {
+          if (isHd && body) {
+            // ヘッダーem+↓ → body先頭テキストへ
+            var tw = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
+            var fn = tw.nextNode();
+            if (fn) r.setStart(fn, 0); else r.setStart(body, 0);
+          } else {
+            // フッターem+↓ → mup全体の後へ
+            r.setStartAfter(mup || em.closest('.mup-ft'));
+          }
+        } else {
+          if (!isHd && body) {
+            // フッターem+↑ → body末尾テキストへ
+            var tw2 = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
+            var ln = null, tn;
+            while ((tn = tw2.nextNode())) ln = tn;
+            if (ln) r.setStart(ln, ln.length); else r.setStart(body, body.childNodes.length);
+          } else {
+            // ヘッダーem+↑ → mup全体の前へ
+            r.setStartBefore(mup || em.closest('.mup-hd'));
+          }
+        }
+        r.collapse(true); sel.removeAllRanges(); sel.addRange(r);
+        return;
+      }
+
+      if (key === 'ArrowLeft') {
         // em先頭でLeft → em末尾へラップ
         var atStart = (node.nodeType === 3 && node === em.firstChild && range.startOffset === 0)
                    || (node === em && range.startOffset === 0);
         if (!atStart) return;
         e.preventDefault();
-        var r = document.createRange();
         var last = em.lastChild;
         r.setStart(last, last.nodeType === 3 ? last.length : last.childNodes.length);
         r.collapse(true); sel.removeAllRanges(); sel.addRange(r);
@@ -387,10 +425,9 @@ function _findNearestVisibleMup() {
                  || (node === em && range.startOffset === em.childNodes.length);
         if (!atEnd) return;
         e.preventDefault();
-        var r2 = document.createRange();
         var first = em.firstChild;
-        r2.setStart(first, 0);
-        r2.collapse(true); sel.removeAllRanges(); sel.addRange(r2);
+        r.setStart(first, 0);
+        r.collapse(true); sel.removeAllRanges(); sel.addRange(r);
       }
     }, true);
 
@@ -435,7 +472,8 @@ function _findNearestVisibleMup() {
   ].join(';');
   document.body.appendChild(_menu);
 
-  var _ctxMup = null; // 右クリック時の .mup 要素（コピー等で使用）
+  var _ctxMup   = null; // 右クリック時の .mup 要素
+  var _ctxEmCur = null; // 右クリック時にカーソルがあったem（WYSIWYGのみ）
 
   function _addItem(label, action) {
     var item = document.createElement('div');
@@ -445,17 +483,23 @@ function _findNearestVisibleMup() {
     item.onmouseleave = function(){ item.style.background=''; item.style.color='#333'; };
     item.onclick = function(){ _hide(); action(); };
     _menu.appendChild(item);
+    return item; // 参照を返す（表示制御用）
   }
   function _addSep() {
     var sep = document.createElement('div');
     sep.style.cssText = 'height:1px;background:#eee;margin:3px 0;';
     _menu.appendChild(sep);
   }
-  function _show(x, y, mupEl) {
-    _ctxMup = mupEl || null;
-    // Bug#2修正(v4.8): TinyMCEのノート切替でbody.innerHTMLが置換されると_menuがDOMから外れる。
-    // 表示前に再アタッチして確実にメニューを表示する。
+  function _show(x, y, mupEl, cursorEm) {
+    _ctxMup   = mupEl   || null;
+    _ctxEmCur = cursorEm || null;
+    // TinyMCEのノート切替でbody.innerHTMLが置換されると_menuがDOMから外れるため再アタッチ
     if (!_menu.parentNode) document.body.appendChild(_menu);
+    // 「膜の中へ」はヘッダーemにカーソルがある時だけ表示
+    if (_itemJumpInside) {
+      _itemJumpInside.style.display =
+        (cursorEm && cursorEm.closest('.mup-hd')) ? '' : 'none';
+    }
     _menu.style.display = 'block';
     var mx = Math.min(x, window.innerWidth  - _menu.offsetWidth  - 8);
     var my = Math.min(y, window.innerHeight - _menu.offsetHeight - 8);
@@ -468,18 +512,35 @@ function _findNearestVisibleMup() {
   _addItem(
     _isWYSIWYG ? '⇄ エディタ切替（名前の編集）' : '⇄ エディタ切替',
     function() {
-      // 右クリックした膜のCNをアンカーとして送る（スクロール復元用）
       var cn = _ctxMup ? _ctxMup.getAttribute('data-mup-cn') : null;
       webviewApi.postMessage('markMupRenderer', { type: 'mupToggleEditor', cn: cn });
     }
   );
-  // ② 名前をコピー: data-mup-cn属性からCN名を取得してクリップボードへ
+  // ② 名前をコピー
   _addSep();
   _addItem('📋 名前をコピー', function() {
     var name = _ctxMup ? (_ctxMup.getAttribute('data-mup-cn') || '') : '';
     if (!name) return;
     navigator.clipboard.writeText(name).catch(function(){});
   });
+  // ③ 膜の中へ移動（WYSIWYGのみ・ヘッダーemにカーソルがある時のみ表示）
+  var _itemJumpInside = null;
+  if (_isWYSIWYG) {
+    _addSep();
+    _itemJumpInside = _addItem('▶ 膜の中へ移動', function() {
+      var em   = _ctxEmCur;
+      var mup  = em ? em.closest('.mup') : null;
+      var body = mup ? mup.querySelector(':scope > .mup-body') : null;
+      if (!body) return;
+      var s = window.getSelection();
+      var r = document.createRange();
+      var tw = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
+      var fn = tw.nextNode();
+      if (fn) r.setStart(fn, 0); else r.setStart(body, 0);
+      r.collapse(true); s.removeAllRanges(); s.addRange(r);
+    });
+    _itemJumpInside.style.display = 'none'; // 初期非表示
+  }
   // \▲[CN=FOLD.CTX.MENU]
 
   // \▼[CN=FOLD.CTX.SCROLL] // エディタ切替後: スクロールターゲット膜へ自動スクロール
@@ -542,16 +603,16 @@ function _findNearestVisibleMup() {
   // \▲[CN=FOLD.CTX.SCROLL]
 
   // \▼[CN=FOLD.CTX.EVENT] // 右クリックイベント
-  // 対象: .mup-ico と .mup-name — WYSIWYG・Markdownプレビュー共通
+  // 対象: .mup-ico / .mup-name（アイコン・名前）＋ WYSIWYGのみ .mup-hd em（コメント編集中）
   // キャプチャ相(true) + stopImmediatePropagation でTinyMCEのメニューを完全抑制
-  // v5.1: _setActiveMup削除 → 右クリックで🟢が付くバグを修正
   document.addEventListener('contextmenu', function(e) {
-    var target = e.target.closest('.mup-ico, .mup-name');
-    if (!target) { _hide(); _hideScrollMenu(); return; }
+    var target   = e.target.closest('.mup-ico, .mup-name');
+    var cursorEm = _isWYSIWYG ? e.target.closest('.mup-hd em, .mup-ft em') : null;
+    if (!target && !cursorEm) { _hide(); _hideScrollMenu(); return; }
     e.preventDefault();
     e.stopImmediatePropagation();
     var mupEl = e.target.closest('.mup');
-    _show(e.clientX, e.clientY, mupEl);
+    _show(e.clientX, e.clientY, mupEl, cursorEm);
   }, true);
   document.addEventListener('click', function(e) {
     if (!_menu.contains(e.target)) _hide();
