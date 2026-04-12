@@ -1,5 +1,10 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
+// v6.4  2026.04.12(日) バグ#1修正: WYSIWYGで🟢スパンにカーソルが入るバグ
+//                      FOLD.CTX.PROTECT: .mup-statusを編集可ゾーンから外す。selectionchangeで
+//                      .mup-statusに入ったらem末尾へ（←キーの対称バウンス）
+//                      バグ#2修正: Markdownモード2sポーリングでソース🟢削除を即時反映
+//                      _activeCN≠sourceCnを検出→_setActiveMup(null)+mupSetActive(null)
 // v6.3  2026.04.12(日) バグ#1修正: WYSIWYG起動時🟢未表示
 //                      FOLD.ACTIVE.INITに600msフォールバック追加: _activeCNがnullならmupGetActiveCnで復元
 //                      改良点#1: FOLD.TOC.INITを条件なし常時ポーリングに変更（パネル前セッション表示に対応）
@@ -327,25 +332,26 @@ function _findNearestVisibleMup() {
   var _isWYSIWYG = document.body.getAttribute('contenteditable') === 'true';
 
   // \▼[CN=FOLD.CTX.PROTECT] // WYSIWYG: 名前span($...$部分)のみ矢印カーソル・編集阻止
-  // .mup-hd/.mup-ft 内で em(コメント) と .mup-status(バッジ) は編集可のままにする
+  // .mup-hd/.mup-ft 内で em(コメント) のみ編集可。
+  // .mup-status(🟢ボタン用空スパン) は名前と同様に不可侵（v6.4〜 mup-statusをemと同扱いから分離）
+  // .mup-badge(バッジ<code>) も不可侵（selectionchangeで自動追い出し）
   if (document.body.getAttribute('contenteditable') === 'true') {
     var _st = document.createElement('style');
     _st.textContent = [
       // ヘッダー・フッター全体はデフォルト矢印
       '.mup-hd,.mup-ft{cursor:default!important}',
-      // 名前span(.mup-name): 矢印カーソル・選択不可
-      '.mup-name{cursor:default!important;user-select:none!important}',
-      // コメントemとバッジだけテキストカーソル・選択可に戻す（🟢アクティブ膜は_activeStyleで上書き）
-      '.mup-hd em,.mup-ft em,.mup-hd .mup-status,.mup-ft .mup-status'
-        +'{cursor:text!important;user-select:text!important}'
+      // 名前span(.mup-name)と🟢スパン(.mup-status): 矢印カーソル・選択不可
+      '.mup-name,.mup-status{cursor:default!important;user-select:none!important}',
+      // コメントemのみテキストカーソル・選択可（🟢アクティブ膜は_activeStyleで.mup-status::afterに上書き）
+      '.mup-hd em,.mup-ft em{cursor:text!important;user-select:text!important}'
     ].join('');
     document.head.appendChild(_st);
 
-    // 編集可ゾーン(em, .mup-status)以外への操作を阻止するヘルパー
+    // 編集可ゾーン(emのみ)以外への操作を阻止するヘルパー
     function _inNameZone(target) {
       if (!target.closest('.mup-hd, .mup-ft')) return false; // ヘッダー・フッター外
-      if (target.closest('em, .mup-status')) return false;   // 編集可ゾーンはスルー
-      return true; // 名前span・アイコン・余白 = 阻止対象
+      if (target.closest('em')) return false;                 // emのみ編集可
+      return true; // 名前span・アイコン・.mup-status・.mup-badge・余白 = 阻止対象
     }
 
     // ① mousedown キャプチャ: 左クリックによるカーソル配置を阻止
@@ -355,26 +361,40 @@ function _findNearestVisibleMup() {
       if (_inNameZone(e.target)) e.preventDefault();
     }, true);
 
-    // ② selectionchange 監視: キーボードナビで名前spanに入ったら追い出す
-    // .mup-name が正しく付与されているので closest('.mup-name') で確実に検知できる
+    // ② selectionchange 監視: キーボードナビで保護ゾーンに入ったら追い出す
+    // 追い出し先: .mup-status(🟢)に入った場合→emの末尾（←キーとの対称バウンス）
+    //            それ以外(.mup-name/.mup-badge等)→emの先頭（→キーとの対称バウンス）
     document.addEventListener('selectionchange', function() {
       var sel = window.getSelection();
       if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return;
       var range = sel.getRangeAt(0);
       var node = range.startContainer;
       var el = (node.nodeType === 3) ? node.parentElement : node;
-      if (!el.closest('.mup-hd, .mup-ft')) return;  // ヘッダー・フッター外はスルー
-      if (el.closest('em, .mup-status')) return;     // 編集可ゾーンはスルー
-      // 名前span・アイコン・余白 → emの先頭へ追い出す
+      if (!el.closest('.mup-hd, .mup-ft')) return; // ヘッダー・フッター外はスルー
+      if (el.closest('em')) return;                 // emはスルー（編集可）
       var hd = el.closest('.mup-hd, .mup-ft');
       var em = hd ? hd.querySelector('em') : null;
       var newRange = document.createRange();
-      if (em && em.firstChild) {
-        newRange.setStart(em.firstChild, 0);
-      } else if (em) {
-        newRange.setStart(em, 0);
+      var inStatus = !!el.closest('.mup-status'); // 🟢スパンに入った場合
+      if (inStatus) {
+        // ←キーでemから🟢に入った → emの末尾へ戻す（左方向の対称バウンス）
+        if (em && em.lastChild) {
+          var ln = em.lastChild;
+          newRange.setStart(ln, ln.nodeType === 3 ? ln.length : ln.childNodes.length);
+        } else if (em) {
+          newRange.setStart(em, em.childNodes.length);
+        } else {
+          newRange.setStartAfter(hd);
+        }
       } else {
-        newRange.setStartAfter(hd);
+        // →キーでemからバッジ等に入った、または名前spanにカーソル → emの先頭へ
+        if (em && em.firstChild) {
+          newRange.setStart(em.firstChild, 0);
+        } else if (em) {
+          newRange.setStart(em, 0);
+        } else {
+          newRange.setStartAfter(hd);
+        }
       }
       newRange.collapse(true);
       sel.removeAllRanges();
@@ -572,15 +592,40 @@ function _findNearestVisibleMup() {
     if (_tocPollTimer) { clearInterval(_tocPollTimer); _tocPollTimer = null; }
   }
 
-  // \▼[CN=FOLD.TOC.INIT] // 起動時TOCポーリング開始
+  // \▼[CN=FOLD.TOC.INIT] // 起動時TOCポーリング開始 + Markdownモード🟢同期
   // 条件なしで常にポーリングを開始する（v6.3〜）。
-  // 理由1: モード切替後の再初期化でも確実に復元される。
-  // 理由2: Joplinはパネル表示状態を前セッションから引き継ぐが、index.tsの_tocPanelVisible=false
-  //        にリセットされるため、mupIsTocVisibleで照会しても「非表示」と返ってしまっていた。
-  // ポーリングはDOM照会+postMessageのみで軽量（400ms間隔）。
   (function() {
     _collectAndSendToc();
     _startTocPoll();
+
+    // \▼[CN=FOLD.TOC.SYNC] // Markdownモード: 2秒ごとにソースの🟢とUI表示を同期（バグ#2修正）
+    // 問題: ユーザーが左ペインで🟢を手動削除しても _activeCN が残り右ペインに🟢が表示され続ける。
+    // 解決: 2sごとにmupGetActiveCnでソースの🟢付きCNを照会し、_activeCNと不一致なら更新する。
+    //       cn=nullの場合はmupSetActive(null)を送信→index.tsが閉じ膜の🟢もソースから削除する。
+    setInterval(function() {
+      if (document.body.getAttribute('contenteditable') === 'true') return; // WYSIWYGはスキップ
+      webviewApi.postMessage('markMupRenderer', { type: 'mupGetActiveCn' })
+        .then(function(res) {
+          var sourceCn = res ? (res.cn || null) : null;
+          if (sourceCn === _activeCN) return; // 変化なし
+          var prevCN = _activeCN;
+          if (sourceCn) {
+            // 🟢が別のCNに移動（手動編集）→ そのCNをアクティブに
+            var mupEl = document.querySelector('.mup[data-mup-cn="' + sourceCn + '"]');
+            if (mupEl) _setActiveMup(mupEl);
+          } else {
+            // 🟢が消えた（手動削除）→ UIをクリア + ソースの閉じ膜🟢も削除
+            _activeCN = null;
+            _activeStyle.textContent = '';
+            if (prevCN) {
+              // cn=nullでmupSetActiveを送信→index.tsが残存する閉じ膜の🟢を削除
+              webviewApi.postMessage('markMupRenderer', { type: 'mupSetActive', cn: null });
+            }
+          }
+        })
+        .catch(function() {});
+    }, 2000);
+    // \▲[CN=FOLD.TOC.SYNC]
   }());
   // \▲[CN=FOLD.TOC.INIT]
 
