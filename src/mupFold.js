@@ -1,5 +1,8 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
+// v7.1  2026.04.12(日) クラス名バグ修正: mup-body→mup-bd（実際のクラス名）
+//                      v7.0まで_getBody()が常にnull返却 → keydownがsetStartAfter(mup)→膜外に飛ぶ
+//                      →「フッタを飛び越える」謎の根本原因。mup-bdに修正で全て解決するはず。
 // v7.0  2026.04.12(日) スコープバグ修正: _getBody()をIIFEトップに移動
 //                      v6.9でifブロック内に定義→メニューアクション(ブロック外)からReferenceError
 //                      → IIFE直下に移動することで全セクションからアクセス可能に
@@ -351,11 +354,12 @@ function _findNearestVisibleMup() {
 (function() {
   var _isWYSIWYG = document.body.getAttribute('contenteditable') === 'true';
 
-  // .mupの直接子である.mup-bodyを取得（IIFEトップで定義→全セクションから参照可）
+  // .mupの直接子である.mup-bdを取得（IIFEトップで定義→全セクションから参照可）
+  // 実際のクラス名は mup-bd（mup-bodyではない）
   function _getBody(mup) {
     if (!mup) return null;
     for (var i = 0; i < mup.children.length; i++) {
-      if (mup.children[i].classList.contains('mup-body')) return mup.children[i];
+      if (mup.children[i].classList.contains('mup-bd')) return mup.children[i];
     }
     return null;
   }
