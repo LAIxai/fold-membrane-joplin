@@ -1,5 +1,9 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
+// v7.7  2026.04.12(日) keydownでft/hd(emなし)を直接処理（根本修正）
+//                      原因: !em=true→即returnしてTinyMCEに丸投げ
+//                      TinyMCEはuser-select:noneだらけのftで↑を処理できず動かない
+//                      修正: ft/hd+emなし+↑↓はkeydown captureで直接preventDefault+ジャンプ
 // v7.6  2026.04.12(日) 根本設計変更: 閉じ膜は「透明な通路」
 //                      selectionchangeで_lastArrowDir参照→ft/hd(emなし)を即通過
 //                      ↑でft→body末尾 / ↓でft→mup外 / ↓でhd→body先頭 / ↑でhd→mup前
@@ -428,8 +432,34 @@ function _findNearestVisibleMup() {
       var node = range.startContainer;
       var el = (node.nodeType === 3) ? node.parentElement : node;
 
-      // em内・hd/ft内のみ処理（em外のft/hd通過はselectionchangeに任せる）
+      // ft/hd(emなし)+↑↓: keydownで直接処理（TinyMCEに渡さない）
       var em = el.closest('em');
+      if (!em && (key === 'ArrowUp' || key === 'ArrowDown')) {
+        var inFt = el.closest('.mup-ft');
+        var inHd = inFt ? null : el.closest('.mup-hd');
+        if (inFt || inHd) {
+          var mupX = (inFt || inHd).closest('.mup');
+          var bdX  = _getBody(mupX);
+          e.preventDefault(); e.stopPropagation();
+          var rx = document.createRange();
+          if (inFt) {
+            if (key === 'ArrowUp' && bdX) {
+              var twX = document.createTreeWalker(bdX, NodeFilter.SHOW_TEXT, null, false);
+              var lnX = null, tnX;
+              while ((tnX = twX.nextNode())) lnX = tnX;
+              if (lnX) rx.setStart(lnX, lnX.length); else rx.setStart(bdX, bdX.childNodes.length);
+            } else { rx.setStartAfter(mupX); }
+          } else {
+            if (key === 'ArrowDown' && bdX) {
+              var twY = document.createTreeWalker(bdX, NodeFilter.SHOW_TEXT, null, false);
+              var fnY = twY.nextNode();
+              if (fnY) rx.setStart(fnY, 0); else rx.setStart(bdX, 0);
+            } else { rx.setStartBefore(mupX); }
+          }
+          rx.collapse(true); sel.removeAllRanges(); sel.addRange(rx);
+          return;
+        }
+      }
       if (!em || !el.closest('.mup-hd, .mup-ft')) return;
       var r = document.createRange();
 
