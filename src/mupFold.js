@@ -1,5 +1,8 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
+// v6.7  2026.04.12(日) ラップアラウンド移動: em先頭で← → em末尾へ、em末尾で→ → em先頭へ
+//                      keydown(事前)でpreventDefault+手動ジャンプ。フラッシュ完全消去。
+//                      selectionchangeはフォールバック（クリック等）として残置。コード整理。
 // v6.6  2026.04.12(日) ←キーフラッシュ根本解決: selectionchange(事後)→keydownキャプチャ(事前阻止)
 //                      em先頭でArrowLeft → preventDefault（mup-statusへの進入を完全ブロック）
 //                      em末尾でArrowRight → preventDefault（mup-badgeへの進入を完全ブロック）
@@ -338,39 +341,25 @@ function _findNearestVisibleMup() {
 (function() {
   var _isWYSIWYG = document.body.getAttribute('contenteditable') === 'true';
 
-  // \▼[CN=FOLD.CTX.PROTECT] // WYSIWYG: 名前span($...$部分)のみ矢印カーソル・編集阻止
+  // \▼[CN=FOLD.CTX.PROTECT] // WYSIWYG: emのみ編集可・ラップアラウンド移動
   // .mup-hd/.mup-ft 内で em(コメント) のみ編集可。
-  // .mup-status(🟢ボタン用空スパン) は名前と同様に不可侵（v6.4〜 mup-statusをemと同扱いから分離）
-  // .mup-badge(バッジ<code>) も不可侵（selectionchangeで自動追い出し）
+  // ← at em先頭 → em末尾へラップ。→ at em末尾 → em先頭へラップ。
   if (document.body.getAttribute('contenteditable') === 'true') {
+    // CSS: 名前・🟢スパンはポインタ禁止、emのみテキスト操作可
     var _st = document.createElement('style');
-    _st.textContent = [
-      // ヘッダー・フッター全体はデフォルト矢印
-      '.mup-hd,.mup-ft{cursor:default!important}',
-      // 名前span(.mup-name)と🟢スパン(.mup-status): 矢印カーソル・選択不可
-      '.mup-name,.mup-status{cursor:default!important;user-select:none!important}',
-      // コメントemのみテキストカーソル・選択可（🟢アクティブ膜は_activeStyleで.mup-status::afterに上書き）
-      '.mup-hd em,.mup-ft em{cursor:text!important;user-select:text!important}'
-    ].join('');
+    _st.textContent = '.mup-hd,.mup-ft{cursor:default!important}'
+      + '.mup-name,.mup-status{cursor:default!important;user-select:none!important}'
+      + '.mup-hd em,.mup-ft em{cursor:text!important;user-select:text!important}';
     document.head.appendChild(_st);
 
-    // 編集可ゾーン(emのみ)以外への操作を阻止するヘルパー
-    function _inNameZone(target) {
-      if (!target.closest('.mup-hd, .mup-ft')) return false; // ヘッダー・フッター外
-      if (target.closest('em')) return false;                 // emのみ編集可
-      return true; // 名前span・アイコン・.mup-status・.mup-badge・余白 = 阻止対象
-    }
-
-    // ① mousedown キャプチャ: 左クリックによるカーソル配置を阻止
-    // 右クリック(button!==0)はスルー → contextmenuイベントが正常に発火する
+    // ヘッダー内でem以外の場所はクリック阻止（右クリックはスルー）
     document.addEventListener('mousedown', function(e) {
       if (e.button !== 0) return;
-      if (_inNameZone(e.target)) e.preventDefault();
+      var t = e.target;
+      if (t.closest('.mup-hd, .mup-ft') && !t.closest('em')) e.preventDefault();
     }, true);
 
-    // ③ keydown キャプチャ: 矢印キーで保護ゾーンへの進入を事前阻止（根本解決）
-    // em先頭でArrowLeft → mup-statusへ進入する前にpreventDefault
-    // em末尾でArrowRight → mup-badgeへ進入する前にpreventDefault
+    // em端でのラップアラウンド移動（keydownで事前阻止＋手動ジャンプ）
     document.addEventListener('keydown', function(e) {
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
       var sel = window.getSelection();
@@ -378,64 +367,58 @@ function _findNearestVisibleMup() {
       var range = sel.getRangeAt(0);
       var node = range.startContainer;
       var el = (node.nodeType === 3) ? node.parentElement : node;
-      if (!el.closest('.mup-hd, .mup-ft')) return; // ヘッダー・フッター外はスルー
-      if (!el.closest('em')) return;                // em内にいる場合のみ処理
-      var hd = el.closest('.mup-hd, .mup-ft');
-      var em = hd ? hd.querySelector('em') : null;
-      if (!em) return;
+      var em = el.closest('em');
+      if (!em || !el.closest('.mup-hd, .mup-ft')) return; // em内・ヘッダー内のみ処理
       if (e.key === 'ArrowLeft') {
-        // em先頭（offset 0）でLeft → mup-statusへの進入を阻止
-        var atStart = (node === em.firstChild && node.nodeType === 3 && range.startOffset === 0)
+        // em先頭でLeft → em末尾へラップ
+        var atStart = (node.nodeType === 3 && node === em.firstChild && range.startOffset === 0)
                    || (node === em && range.startOffset === 0);
-        if (atStart) e.preventDefault();
+        if (!atStart) return;
+        e.preventDefault();
+        var r = document.createRange();
+        var last = em.lastChild;
+        r.setStart(last, last.nodeType === 3 ? last.length : last.childNodes.length);
+        r.collapse(true); sel.removeAllRanges(); sel.addRange(r);
       } else {
-        // em末尾でRight → mup-badgeへの進入を阻止
+        // em末尾でRight → em先頭へラップ
         var lastChild = em.lastChild;
         var atEnd = (lastChild && lastChild.nodeType === 3 && node === lastChild
                      && range.startOffset === lastChild.length)
                  || (node === em && range.startOffset === em.childNodes.length);
-        if (atEnd) e.preventDefault();
+        if (!atEnd) return;
+        e.preventDefault();
+        var r2 = document.createRange();
+        var first = em.firstChild;
+        r2.setStart(first, 0);
+        r2.collapse(true); sel.removeAllRanges(); sel.addRange(r2);
       }
     }, true);
 
-    // ② selectionchange 監視: フォールバック（クリック等でも保護ゾーンには入れない）
-    // 追い出し先: .mup-status(🟢)に入った場合→emの末尾（←キーとの対称バウンス）
-    //            それ以外(.mup-name/.mup-badge等)→emの先頭（→キーとの対称バウンス）
+    // フォールバック: クリック等でem外にカーソルが入った場合の追い出し
     document.addEventListener('selectionchange', function() {
       var sel = window.getSelection();
       if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return;
       var range = sel.getRangeAt(0);
       var node = range.startContainer;
       var el = (node.nodeType === 3) ? node.parentElement : node;
-      if (!el.closest('.mup-hd, .mup-ft')) return; // ヘッダー・フッター外はスルー
-      if (el.closest('em')) return;                 // emはスルー（編集可）
+      if (!el.closest('.mup-hd, .mup-ft') || el.closest('em')) return;
       var hd = el.closest('.mup-hd, .mup-ft');
       var em = hd ? hd.querySelector('em') : null;
-      var newRange = document.createRange();
-      var inStatus = !!el.closest('.mup-status'); // 🟢スパンに入った場合
-      if (inStatus) {
-        // ←キーでemから🟢に入った → emの末尾へ戻す（左方向の対称バウンス）
-        if (em && em.lastChild) {
-          var ln = em.lastChild;
-          newRange.setStart(ln, ln.nodeType === 3 ? ln.length : ln.childNodes.length);
-        } else if (em) {
-          newRange.setStart(em, em.childNodes.length);
-        } else {
-          newRange.setStartAfter(hd);
-        }
+      var r = document.createRange();
+      if (el.closest('.mup-status')) {
+        // 🟢スパン → em末尾へ
+        var ln = em && em.lastChild;
+        if (ln) r.setStart(ln, ln.nodeType === 3 ? ln.length : ln.childNodes.length);
+        else if (em) r.setStart(em, em.childNodes.length);
+        else r.setStartAfter(hd);
       } else {
-        // →キーでemからバッジ等に入った、または名前spanにカーソル → emの先頭へ
-        if (em && em.firstChild) {
-          newRange.setStart(em.firstChild, 0);
-        } else if (em) {
-          newRange.setStart(em, 0);
-        } else {
-          newRange.setStartAfter(hd);
-        }
+        // 名前・バッジ等 → em先頭へ
+        var fn = em && em.firstChild;
+        if (fn) r.setStart(fn, 0);
+        else if (em) r.setStart(em, 0);
+        else r.setStartAfter(hd);
       }
-      newRange.collapse(true);
-      sel.removeAllRanges();
-      sel.addRange(newRange);
+      r.collapse(true); sel.removeAllRanges(); sel.addRange(r);
     });
   }
   // \▲[CN=FOLD.CTX.PROTECT]
