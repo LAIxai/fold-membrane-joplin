@@ -1,5 +1,7 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
+// v7.3  2026.04.13(月) ft+↑ TreeWalkerのmup-ft除外バグ修正
+//                      body末尾のTreeWalkerがmup-ft内テキストを最後と誤認→元位置に戻る問題
 // v7.2  2026.04.13(月) ft(閉じ膜)の↑↓脱出を修正: emなしでもinFt判定でkeydown処理
 //                      ← / →はftで阻止。isHd/mupをem nullセーフに変更
 // v7.1  2026.04.12(日) クラス名バグ修正: mup-body→mup-bd（実際のクラス名）
@@ -418,8 +420,12 @@ function _findNearestVisibleMup() {
           }
         } else {
           if (!isHd && body) {
-            // フッター+↑ → body末尾テキストへ
-            var tw2 = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
+            // フッター+↑ → body末尾テキストへ（mup-ft自体は除外）
+            var mupFtEl = body.querySelector('.mup-ft');
+            var tw2 = document.createTreeWalker(body, NodeFilter.SHOW_TEXT,
+              mupFtEl ? {acceptNode: function(n) {
+                return mupFtEl.contains(n) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+              }} : null, false);
             var ln = null, tn;
             while ((tn = tw2.nextNode())) ln = tn;
             if (ln) r.setStart(ln, ln.length); else r.setStart(body, body.childNodes.length);
