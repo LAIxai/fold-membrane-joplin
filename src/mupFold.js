@@ -1,5 +1,9 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
+// v7.5  2026.04.13(月) hd+↑をsetStartBefore→setStartAfter(prev)に変更
+//                      直前要素を明示指定することでTinyMCEの誤正規化を回避
+// v7.4  2026.04.13(月) ft検出: [mup-bd,N≥ftIdx]も inFt=true扱い
+//                      2段階の条件(!inFt&&!closest)も修正。デバッグバー残置
 // v7.3  2026.04.13(月) ft+↑ TreeWalkerのmup-ft除外バグ修正
 //                      body末尾のTreeWalkerがmup-ft内テキストを最後と誤認→元位置に戻る問題
 // v7.2  2026.04.13(月) ft(閉じ膜)の↑↓脱出を修正: emなしでもinFt判定でkeydown処理
@@ -399,7 +403,15 @@ function _findNearestVisibleMup() {
       var el = (node.nodeType === 3) ? node.parentElement : node;
       var em   = el.closest('em');
       var inFt = !!el.closest('.mup-ft');
-      if ((!em && !inFt) || !el.closest('.mup-hd, .mup-ft')) return; // em内またはft内のみ処理
+      // カーソルが[mup-bd, n≥ftIdx]位置の場合もft扱い（selectionchangeがmup-ft後に置く）
+      if (!inFt && el.classList && el.classList.contains('mup-bd')) {
+        var _mupFt = el.querySelector(':scope > .mup-ft');
+        if (_mupFt) {
+          var _ftIdx = Array.prototype.indexOf.call(el.childNodes, _mupFt);
+          if (_ftIdx >= 0 && range.startOffset >= _ftIdx) inFt = true;
+        }
+      }
+      if ((!em && !inFt) || (!inFt && !el.closest('.mup-hd, .mup-ft'))) return; // em内またはft内のみ処理
       var r = document.createRange();
 
       if (key === 'ArrowDown' || key === 'ArrowUp') {
@@ -430,8 +442,19 @@ function _findNearestVisibleMup() {
             while ((tn = tw2.nextNode())) ln = tn;
             if (ln) r.setStart(ln, ln.length); else r.setStart(body, body.childNodes.length);
           } else {
-            // ヘッダーem+↑ → mup全体の前へ
-            r.setStartBefore(mup || el.closest('.mup-hd'));
+            // ヘッダーem+↑ → mup直前のテキストノード末尾へ明示指定
+            // setStartBefore/setStartAfterはTinyMCEがmup先頭に誤正規化するため不可
+            var prevSib = mup && mup.previousSibling;
+            var foundTn = null;
+            while (prevSib && !foundTn) {
+              var twPrev = document.createTreeWalker(prevSib, NodeFilter.SHOW_TEXT, null, false);
+              var tnLast = null, tnCur;
+              while ((tnCur = twPrev.nextNode())) tnLast = tnCur;
+              if (tnLast) foundTn = tnLast;
+              else prevSib = prevSib.previousSibling;
+            }
+            if (foundTn) r.setStart(foundTn, foundTn.length);
+            else r.setStartBefore(mup || el.closest('.mup-hd'));
           }
         }
         r.collapse(true); sel.removeAllRanges(); sel.addRange(r);
