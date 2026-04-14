@@ -1,13 +1,5 @@
 // \▼[CN=FOLD] // Fold Membrane - click handler v6.0
 // ─── changelog ───────────────────────────────────────
-// v7.5  2026.04.13(月) hd+↑をsetStartBefore→setStartAfter(prev)に変更
-//                      直前要素を明示指定することでTinyMCEの誤正規化を回避
-// v7.4  2026.04.13(月) ft検出: [mup-bd,N≥ftIdx]も inFt=true扱い
-//                      2段階の条件(!inFt&&!closest)も修正。デバッグバー残置
-// v7.3  2026.04.13(月) ft+↑ TreeWalkerのmup-ft除外バグ修正
-//                      body末尾のTreeWalkerがmup-ft内テキストを最後と誤認→元位置に戻る問題
-// v7.2  2026.04.13(月) ft(閉じ膜)の↑↓脱出を修正: emなしでもinFt判定でkeydown処理
-//                      ← / →はftで阻止。isHd/mupをem nullセーフに変更
 // v7.1  2026.04.12(日) クラス名バグ修正: mup-body→mup-bd（実際のクラス名）
 //                      v7.0まで_getBody()が常にnull返却 → keydownがsetStartAfter(mup)→膜外に飛ぶ
 //                      →「フッタを飛び越える」謎の根本原因。mup-bdに修正で全て解決するはず。
@@ -401,23 +393,14 @@ function _findNearestVisibleMup() {
       var range = sel.getRangeAt(0);
       var node = range.startContainer;
       var el = (node.nodeType === 3) ? node.parentElement : node;
-      var em   = el.closest('em');
-      var inFt = !!el.closest('.mup-ft');
-      // カーソルが[mup-bd, n≥ftIdx]位置の場合もft扱い（selectionchangeがmup-ft後に置く）
-      if (!inFt && el.classList && el.classList.contains('mup-bd')) {
-        var _mupFt = el.querySelector(':scope > .mup-ft');
-        if (_mupFt) {
-          var _ftIdx = Array.prototype.indexOf.call(el.childNodes, _mupFt);
-          if (_ftIdx >= 0 && range.startOffset >= _ftIdx) inFt = true;
-        }
-      }
-      if ((!em && !inFt) || (!inFt && !el.closest('.mup-hd, .mup-ft'))) return; // em内またはft内のみ処理
+      var em = el.closest('em');
+      if (!em || !el.closest('.mup-hd, .mup-ft')) return; // em内・ヘッダー内のみ処理
       var r = document.createRange();
 
       if (key === 'ArrowDown' || key === 'ArrowUp') {
         // ↑↓: 膜内部 / 膜外へ脱出
-        var isHd = em ? !!em.closest('.mup-hd') : false; // emなし(ft)はisHd=false
-        var mup  = em ? em.closest('.mup') : el.closest('.mup');
+        var isHd = !!em.closest('.mup-hd');
+        var mup  = em.closest('.mup');
         var body = _getBody(mup);
         e.preventDefault();
         if (key === 'ArrowDown') {
@@ -427,34 +410,19 @@ function _findNearestVisibleMup() {
             var fn = tw.nextNode();
             if (fn) r.setStart(fn, 0); else r.setStart(body, 0);
           } else {
-            // フッター+↓ → mup全体の後へ
-            r.setStartAfter(mup || el.closest('.mup-ft'));
+            // フッターem+↓ → mup全体の後へ
+            r.setStartAfter(mup || em.closest('.mup-ft'));
           }
         } else {
           if (!isHd && body) {
-            // フッター+↑ → body末尾テキストへ（mup-ft自体は除外）
-            var mupFtEl = body.querySelector('.mup-ft');
-            var tw2 = document.createTreeWalker(body, NodeFilter.SHOW_TEXT,
-              mupFtEl ? {acceptNode: function(n) {
-                return mupFtEl.contains(n) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
-              }} : null, false);
+            // フッターem+↑ → body末尾テキストへ
+            var tw2 = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
             var ln = null, tn;
             while ((tn = tw2.nextNode())) ln = tn;
             if (ln) r.setStart(ln, ln.length); else r.setStart(body, body.childNodes.length);
           } else {
-            // ヘッダーem+↑ → mup直前のテキストノード末尾へ明示指定
-            // setStartBefore/setStartAfterはTinyMCEがmup先頭に誤正規化するため不可
-            var prevSib = mup && mup.previousSibling;
-            var foundTn = null;
-            while (prevSib && !foundTn) {
-              var twPrev = document.createTreeWalker(prevSib, NodeFilter.SHOW_TEXT, null, false);
-              var tnLast = null, tnCur;
-              while ((tnCur = twPrev.nextNode())) tnLast = tnCur;
-              if (tnLast) foundTn = tnLast;
-              else prevSib = prevSib.previousSibling;
-            }
-            if (foundTn) r.setStart(foundTn, foundTn.length);
-            else r.setStartBefore(mup || el.closest('.mup-hd'));
+            // ヘッダーem+↑ → mup全体の前へ
+            r.setStartBefore(mup || em.closest('.mup-hd'));
           }
         }
         r.collapse(true); sel.removeAllRanges(); sel.addRange(r);
@@ -462,8 +430,6 @@ function _findNearestVisibleMup() {
       }
 
       if (key === 'ArrowLeft') {
-        // ftにemなし: 左移動を阻止
-        if (!em) { e.preventDefault(); return; }
         // em先頭でLeft → em末尾へラップ
         var atStart = (node.nodeType === 3 && node === em.firstChild && range.startOffset === 0)
                    || (node === em && range.startOffset === 0);
@@ -473,8 +439,6 @@ function _findNearestVisibleMup() {
         r.setStart(last, last.nodeType === 3 ? last.length : last.childNodes.length);
         r.collapse(true); sel.removeAllRanges(); sel.addRange(r);
       } else {
-        // ftにemなし: 右移動を阻止
-        if (!em) { e.preventDefault(); return; }
         // em末尾でRight → em先頭へラップ
         var lastChild = em.lastChild;
         var atEnd = (lastChild && lastChild.nodeType === 3 && node === lastChild

@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.41
- * @date    2026.04.10(金)
+ * @version 8.60
+ * @date    2026.04.14(火)
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -178,6 +178,23 @@
  *   v8.29 2026.04.08(水) CN=6291 NAME_SYNC追加: WYSIWYG編集後の開閉膜名不一致をrepairMupSpan内で自動修正。
  *   v8.34 2026.04.09(木) CN=4721 SCROLL_TARGET: Markdown→WYSIWYG切替時にCNアンカーを保存。WYSIWYG起動後にscrollIntoViewで対象膜へ自動スクロール。
  *   v8.33 2026.04.09(木) CN=3901 ANTISPOOFING: mupToggle受信直後にノートIDを保存。300msプローブ後・PUT直前に二重照合。
+ *   v8.44 2026.04.14(火) NoteSizeInfoにratio追加。パネルHTML/CSSにプログレスバー(#sz-progress)追加。
+ *   v8.45 2026.04.14(火) パネルからバッジ(⚠️大きめ/🔴要注意)削除。バークリックでポップアップ表示。
+ *   v8.46 2026.04.14(火) chars表示をbody.length-8に補正（空ノート基底8charを除外）。
+ *   v8.47 2026.04.14(火) 改行のみ残留（TinyMCE空ノート）のとき0char表示に補正。
+ *   v8.48 2026.04.14(火) bytes≤14かつrawChars≤6の組合せを空ノートと判定し0char表示。
+ *   v8.49 2026.04.14(火) 空判定を===14/===6の完全一致に修正。0charsも常時表示。
+ *   v8.50 2026.04.14(火) パネルにrefreshNoteSizeハンドラ追加。ポップアップに更新/キャンセルボタン。
+ *   v8.51 2026.04.14(火) 手動更新後に「前回→今回(+N)」差分表示。ノート切替でリセット。
+ *   v8.52 2026.04.14(火) onNoteChange削除（cmd+S更新を停止）。_applyData手動=強制再描画に修正。
+ *   v8.54 2026.04.14(火) 起動時のみベースライン確定。recalcNoteSizeハンドラ追加。ノート切替も自動更新なし。
+ *   v8.55 2026.04.14(火) mupBaselineSet/mupBaselineNoteSize設定追加。更新ボタンで永続保存。Joplin再起動後も維持。
+ *   v8.56 2026.04.14(火) registerSection削除（section指定なしに変更）。設定の永続化問題を修正。
+ *   v8.57 2026.04.14(火) recalcNoteSize: 初回再計算時にもflag=1+ベースラインDB保存。再起動後も維持。
+ *   v8.58 2026.04.14(火) recalcCharsを_latestTocDataに追加・永続保存。ノート切替・再起動後も差分表示維持。
+ *   v8.59 2026.04.14(火) mupNoteSizeMapでノートID別管理に刷新。切替時に対応データ復元。更新で初期値も更新。
+ *   v8.60 2026.04.14(火) chars計算をbody.trim().lengthに変更。-8/特殊ケース廃止。日本語多バイト対応。
+ *   v8.61 2026.04.14(火) 目標文字数機能追加。targetCharsをノートID別に永続保存。プログレスバーが目標モードに切替。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -223,7 +240,7 @@
 
 // \▼[CN=4267_imports] // モジュールインポート
 import joplin from 'api';
-import { ContentScriptType, MenuItemLocation } from 'api/types';
+import { ContentScriptType, MenuItemLocation, SettingItemType } from 'api/types';
 // \▲[CN=4267_imports]
 
 // \▼[CN=9043_repairMupSpan] // TinyMCE破壊をmarkMup記法に修復
@@ -619,6 +636,17 @@ function repairMupSpan(body: string): string {
 joplin.plugins.register({
   onStart: async function() {
 
+    // \▼[CN=9120_settings] // 永続設定: ノートID別サイズデータ
+    // { [noteId]: { baseline: NoteSizeInfo, recalcChars: number|null } }
+    await joplin.settings.registerSettings({
+      mupNoteSizeMap: {
+        value: '{}', type: SettingItemType.String,
+        public: false,
+        label: 'Fold Membrane: Per-note size data JSON',
+      },
+    });
+    // \▲[CN=9120_settings]
+
     // \▼[CN=6924_renderer] // markMupレンダラー登録
     await joplin.contentScripts.register(
       ContentScriptType.MarkdownItPlugin,
@@ -652,7 +680,58 @@ joplin.plugins.register({
     let _tocPanelVisible = false;
     let _pendingTocCN: string | null = null;
     // Pull型ポーリング用: パネルからのrequestTocに返すデータを保持
-    let _latestTocData: { membranes: any[]; activeCN: string | null } = { membranes: [], activeCN: null };
+    // noteSize: { str, level, chars, ratio } を含む（膜目次上端に表示）
+    // ratio: 0.0〜1.0（1MB基準。プログレスバー幅に使用）
+    // recalcChars: 再計算後の文字数（null=未再計算、永続保存される）
+    // targetChars: 目標文字数（null=未設定、ノート別に永続保存）
+    type NoteSizeInfo = { str: string; level: 'ok' | 'warn' | 'danger'; chars: number; ratio: number };
+    let _latestTocData: { membranes: any[]; activeCN: string | null; noteSize: NoteSizeInfo; recalcChars: number | null; targetChars: number | null }
+      = { membranes: [], activeCN: null, noteSize: { str: '—', level: 'ok', chars: 0, ratio: 0 }, recalcChars: null, targetChars: null };
+
+    // ── ノートサイズ計算 ──────────────────────────────────
+    // ratio閾値: 青(<100KB=0.1) → 黄(〜500KB=0.5) → 橙(〜1MB=1.0) → 赤(1MB+)
+    function _calcNoteSize(body: string): NoteSizeInfo {
+      const raw = body || '';
+      const bytes = Buffer.byteLength(raw, 'utf8');
+      // trim()で前後の改行・空白を除去した文字数が実質コンテンツ数（日本語・ASCII共通）
+      const chars = raw.trim().length;
+      const ratio = Math.min(bytes / (1024 * 1024), 1.0);
+      if (bytes === 0) return { str: '—', level: 'ok', chars: 0, ratio: 0 };
+      const WARN = 100 * 1024, DANGER = 1024 * 1024;
+      if (bytes < 1024)   return { str: `${bytes} B`,                             level: 'ok',     chars, ratio };
+      if (bytes < WARN)   return { str: `${(bytes / 1024).toFixed(1)} KB`,        level: 'ok',     chars, ratio };
+      if (bytes < DANGER) return { str: `${(bytes / 1024).toFixed(0)} KB`,        level: 'warn',   chars, ratio };
+      return                     { str: `${(bytes / 1024 / 1024).toFixed(2)} MB`, level: 'danger', chars, ratio };
+    }
+    async function _updateNoteSize() {
+      const note = await joplin.workspace.selectedNote();
+      _latestTocData = { ..._latestTocData, noteSize: _calcNoteSize(note?.body || '') };
+    }
+    // ── ノートIDごとのサイズデータ管理 ────────────────────
+    async function _loadNoteMap(): Promise<Record<string, any>> {
+      try { return JSON.parse(await joplin.settings.value('mupNoteSizeMap') || '{}'); }
+      catch { return {}; }
+    }
+    async function _saveNoteMap(map: Record<string, any>) {
+      await joplin.settings.setValue('mupNoteSizeMap', JSON.stringify(map));
+    }
+    // ノート切替時: 保存済みデータを復元。なければ現在値を計算表示（保存はしない）
+    async function _loadNoteData() {
+      const note = await joplin.workspace.selectedNote();
+      if (!note) return;
+      const map = await _loadNoteMap();
+      if (map[note.id] && map[note.id].baseline?.str) {
+        const { baseline, recalcChars, targetChars } = map[note.id];
+        _latestTocData = { ..._latestTocData, noteSize: baseline as NoteSizeInfo, recalcChars: recalcChars ?? null, targetChars: targetChars ?? null };
+      } else {
+        await _updateNoteSize();
+        _latestTocData = { ..._latestTocData, recalcChars: null, targetChars: null };
+      }
+    }
+    await joplin.workspace.onNoteSelectionChange(_loadNoteData);
+    await _loadNoteData(); // 起動時
+    // ─────────────────────────────────────────────────────
+
     const _tocPanel = await joplin.views.panels.create('mupTocPanel');
     await joplin.views.panels.addScript(_tocPanel, './mupTocPanel.js');
     await joplin.views.panels.setHtml(_tocPanel, `<!DOCTYPE html>
@@ -660,10 +739,19 @@ joplin.plugins.register({
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#fff;height:100vh;display:flex;flex-direction:column}
 #toc-header{padding:8px 12px;background:#f5f5f5;border-bottom:1px solid #ddd;font-size:13px;font-weight:bold;color:#444;flex-shrink:0;user-select:none}
+#note-size-bar{padding:4px 12px 6px;background:#fafafa;font-size:11px;flex-shrink:0;display:flex;align-items:center;gap:6px;min-height:22px;position:relative}
+#sz-progress{position:absolute;bottom:0;left:0;height:3px;width:0%;transition:width 0.4s,background-color 0.4s;border-radius:0 2px 2px 0}
+.sz-label{color:#aaa}
+.sz-ok{color:#4CAF50;font-weight:bold;font-family:monospace}
+.sz-warn{color:#FF9800;font-weight:bold;font-family:monospace}
+.sz-danger{color:#F44336;font-weight:bold;font-family:monospace;animation:szp 2s ease-in-out infinite}
+.sz-chars{margin-left:auto;color:#bbb;font-family:monospace}
+@keyframes szp{0%,100%{opacity:1}50%{opacity:.55}}
 #toc-list{overflow-y:auto;flex:1}
 </style></head>
 <body>
 <div id="toc-header">🗂 Membranes Index</div>
+<div id="note-size-bar"><span class="sz-label">📄</span><span class="sz-ok">—</span><div id="sz-progress"></div></div>
 <div id="toc-list"></div>
 </body></html>`);
     await joplin.views.panels.show(_tocPanel, false); // 初期非表示
@@ -674,6 +762,42 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
       }
       // Pull型: パネルが600msごとに最新データをリクエスト
       if (msg?.type === 'requestToc') {
+        return _latestTocData;
+      }
+      // 再計算: 現在値を取得。ベースラインは変えず、recalcCharsをノートIDごとに保存。
+      if (msg?.type === 'recalcNoteSize') {
+        const note = await joplin.workspace.selectedNote();
+        if (!note) return { baseline: _latestTocData.noteSize, current: _latestTocData.noteSize };
+        const current = _calcNoteSize(note.body || '');
+        const map = await _loadNoteMap();
+        const baseline = map[note.id]?.baseline || _latestTocData.noteSize;
+        const targetChars = map[note.id]?.targetChars ?? null;
+        map[note.id] = { baseline, recalcChars: current.chars, targetChars };
+        await _saveNoteMap(map);
+        _latestTocData = { ..._latestTocData, noteSize: baseline as NoteSizeInfo, recalcChars: current.chars, targetChars };
+        return { baseline, current };
+      }
+      // 更新: ベースラインを現在値に更新し保存。recalcCharsはクリア。
+      if (msg?.type === 'refreshNoteSize') {
+        const note = await joplin.workspace.selectedNote();
+        if (!note) return _latestTocData;
+        await _updateNoteSize(); // _latestTocData.noteSizeを現在値に更新
+        const map = await _loadNoteMap();
+        const targetChars = map[note.id]?.targetChars ?? null;
+        map[note.id] = { baseline: _latestTocData.noteSize, recalcChars: null, targetChars };
+        await _saveNoteMap(map);
+        _latestTocData = { ..._latestTocData, recalcChars: null, targetChars };
+        return _latestTocData;
+      }
+      // 目標文字数設定/解除: targetCharsをノートIDごとに永続保存
+      if (msg?.type === 'setTargetChars') {
+        const note = await joplin.workspace.selectedNote();
+        if (!note) return _latestTocData;
+        const tc = (typeof msg.targetChars === 'number' && msg.targetChars > 0) ? msg.targetChars : null;
+        const map = await _loadNoteMap();
+        map[note.id] = { ...(map[note.id] || {}), targetChars: tc };
+        await _saveNoteMap(map);
+        _latestTocData = { ..._latestTocData, targetChars: tc };
         return _latestTocData;
       }
     });
@@ -818,13 +942,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
       }
       if (msg.type === 'mupUpdateToc') {
         // Pull型ポーリング用にデータを保存（パネルが600msごとにrequestTocで取得）
-        _latestTocData = { membranes: msg.membranes || [], activeCN: msg.activeCN || null };
+        _latestTocData = { membranes: msg.membranes || [], activeCN: msg.activeCN || null, noteSize: _latestTocData.noteSize, recalcChars: _latestTocData.recalcChars, targetChars: _latestTocData.targetChars };
         // Push型でも即時転送（補助: onMessageが動く環境では即時反映）
         if (_tocPanelVisible) {
           await joplin.views.panels.postMessage(_tocPanel, {
             type: 'updateToc',
             membranes: msg.membranes,
             activeCN: msg.activeCN,
+            noteSize: _latestTocData.noteSize,
           });
         }
         return;
