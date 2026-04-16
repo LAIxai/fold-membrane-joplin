@@ -31,6 +31,10 @@
 // v6.3  2026.04.12(日) バグ#1修正: WYSIWYG起動時🟢未表示
 //                      FOLD.ACTIVE.INITに600msフォールバック追加: _activeCNがnullならmupGetActiveCnで復元
 //                      改良点#1: FOLD.TOC.INITを条件なし常時ポーリングに変更（パネル前セッション表示に対応）
+// v7.2  2026.04.17(金) "📋 Copy membrane contents"メニュー追加
+//                      _getBody()で.mup-bdのinnerTextをクリップボードにコピー
+// v6.3  2026.04.14(火) バグ#1修正: _menu/_scrollMenuをdocument.documentElement配下に移動
+//                      （document.bodyはWYSIWYGでTinyMCE編集エリア→ノート本文汚染の根本原因）
 // v6.2  2026.04.12(日) パネルクリック無効バグ修正: モード切替後にmupFold.js再初期化→_tocPollTimerリセット
 //                      起動時にmupIsTocVisibleでパネル状態を照会→表示中ならポーリング自動再開
 // v6.1  2026.04.11(土) パネル表示バグ修正: Pull型ポーリング対応(_startTocPoll毎回送信)
@@ -491,7 +495,7 @@ function _findNearestVisibleMup() {
     'padding:4px 0','min-width:160px','font-size:13px',
     'user-select:none','cursor:default'
   ].join(';');
-  document.body.appendChild(_menu);
+  document.documentElement.appendChild(_menu);
 
   var _ctxMup   = null; // 右クリック時の .mup 要素
   var _ctxEmCur = null; // 右クリック時にカーソルがあったem（WYSIWYGのみ）
@@ -516,8 +520,8 @@ function _findNearestVisibleMup() {
   function _show(x, y, mupEl, cursorEm) {
     _ctxMup   = mupEl   || null;
     _ctxEmCur = cursorEm || null;
-    // TinyMCEのノート切替でbody.innerHTMLが置換されると_menuがDOMから外れるため再アタッチ
-    if (!_menu.parentNode) document.body.appendChild(_menu);
+    // TinyMCEのノート切替でbody.innerHTMLが置換されても_menuはdocumentElementに保持されるため再アタッチ不要だが念のため
+    if (!_menu.parentNode) document.documentElement.appendChild(_menu);
     // 「膜の中へ」はヘッダー/フッターemにカーソルがある時に表示
     if (_itemJumpInside) {
       _itemJumpInside.style.display = cursorEm ? '' : 'none';
@@ -538,12 +542,18 @@ function _findNearestVisibleMup() {
       webviewApi.postMessage('markMupRenderer', { type: 'mupToggleEditor', cn: cn });
     }
   );
-  // ② 名前をコピー
+  // ② 名前をコピー / Copy membrane contents
   _addSep();
   _addItem('📋 名前をコピー', function() {
     var name = _ctxMup ? (_ctxMup.getAttribute('data-mup-cn') || '') : '';
     if (!name) return;
     navigator.clipboard.writeText(name).catch(function(){});
+  });
+  _addItem('📋 Copy membrane contents', function() {
+    var body = _getBody(_ctxMup);
+    if (!body) return;
+    var text = (body.innerText || body.textContent || '').trim();
+    navigator.clipboard.writeText(text).catch(function(){});
   });
   // ③ 膜の中へ移動（WYSIWYGのみ・ヘッダー/フッターemにカーソルがある時表示）
   //    ヘッダーem → body先頭へ。フッターem → body末尾へ。
@@ -756,7 +766,7 @@ function _findNearestVisibleMup() {
     'padding:4px 0','min-width:200px','font-size:13px',
     'user-select:none','cursor:default'
   ].join(';');
-  document.body.appendChild(_scrollMenu);
+  document.documentElement.appendChild(_scrollMenu);
 
   // ① 🟢 アクティブ膜にスクロール（_activeCNがある時のみ有効）
   var _smScrollItem = document.createElement('div');
@@ -808,7 +818,7 @@ function _findNearestVisibleMup() {
     // _activeCNがない時はスクロール項目をグレーアウト
     _smScrollItem.style.color = _activeCN ? '#333' : '#bbb';
     _smScrollItem.style.cursor = _activeCN ? 'pointer' : 'default';
-    if (!_scrollMenu.parentNode) document.body.appendChild(_scrollMenu);
+    if (!_scrollMenu.parentNode) document.documentElement.appendChild(_scrollMenu);
     _scrollMenu.style.display = 'block';
     var mx = Math.min(e.clientX, window.innerWidth  - _scrollMenu.offsetWidth  - 8);
     var my = Math.min(e.clientY, window.innerHeight - _scrollMenu.offsetHeight - 8);
