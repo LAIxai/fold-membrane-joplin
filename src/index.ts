@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.65
- * @date    2026.04.17(金)pm09:50
+ * @version 8.66
+ * @date    2026.04.17(金)pm10:12
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -199,6 +199,7 @@
  *   v8.63 [2026.04.17(金)pm06:30] ツールバー膜挿入を$記法($▼m[H1=...]$)に変更（TinyMCE耐性向上）。CN=5318_HEADING2MUP新設: orphan閉じ膜$▲m[H1=...]$を手がかりに、同名の# name/## name/### name heading行を開き膜に自動復元。_extractPfxCnがfont-sizeからH1/H2/H3を推定しCN誤変換を防止。
  *   v8.64 [2026.04.17(金)pm09:28] ツールバー膜挿入をモード別に分岐: Markdown=v2.1記法($なし)・WYSIWYG=$記法+コードブロック包み。Markdownモードは破壊リスクがないためシンプルな記法を維持。
  *   v8.65 [2026.04.17(金)pm09:50] WYSIWYG挿入をmceInsertContentで<pre><code>HTMLブロックに変更。replaceSelectionでは```がプレーンテキストのまま見える不具合修正。Markdownに切替時```…```に変換→膜として認識される。
+ *   v8.66 [2026.04.17(金)pm10:12] WYSIWYG挿入をJoplin内部形式 pre.joplin-source + data-joplin-source-open/close に変更。手動でコードブロックボタンを押した時と同じ単一ブロック表示になる。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -1485,16 +1486,22 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
           } catch(_e2) {}
         }
       } else {
-        // WYSIWYG: $記法でTinyMCEの<pre><code>ブロックに挿入（汚染防止）
-        // replaceSelectionはプレーンテキスト扱いで```がそのまま見えてしまうため、
-        // mceInsertContentでTinyMCEに実HTMLコードブロックを入れる。
-        // Markdownに切替時はJoplinが ```…``` に変換 → renderer/repairMupSpanが膜として認識。
+        // WYSIWYG: Joplin内部の pre.joplin-source 形式で挿入。
+        // 手動でコードブロックツールボタンを押して$記法を入力→OKで戻った時と同じHTML形式。
+        // data-joplin-source-open="```\n"/close="\n```" でMarkdown往復時に正しく ```…``` に復元される。
+        // Markdownへ切替時は repairMupSpan CN=3094_CODEFENCE_UNWRAP が膜記法を検出して ``` を除去。
         const membrane = _mupMakeMembrane(kind, selected, true);
         const esc = membrane
           .replace(/&/g, '&amp;')
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;');
-        const html = '<pre><code>' + esc + '</code></pre>';
+        const html =
+          '<pre class="joplin-source"' +
+          ' data-joplin-language=""' +
+          ' data-joplin-source-open="\`\`\`\n"' +
+          ' data-joplin-source-close="\n\`\`\`">' +
+          esc +
+          '</pre>';
         try {
           await joplin.commands.execute('editor.execCommand', {
             name: 'mceInsertContent', value: html,
