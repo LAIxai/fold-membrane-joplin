@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.66
- * @date    2026.04.17(金)pm10:12
+ * @version 8.67
+ * @date    2026.04.17(金)pm10:35
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -200,6 +200,7 @@
  *   v8.64 [2026.04.17(金)pm09:28] ツールバー膜挿入をモード別に分岐: Markdown=v2.1記法($なし)・WYSIWYG=$記法+コードブロック包み。Markdownモードは破壊リスクがないためシンプルな記法を維持。
  *   v8.65 [2026.04.17(金)pm09:50] WYSIWYG挿入をmceInsertContentで<pre><code>HTMLブロックに変更。replaceSelectionでは```がプレーンテキストのまま見える不具合修正。Markdownに切替時```…```に変換→膜として認識される。
  *   v8.66 [2026.04.17(金)pm10:12] WYSIWYG挿入をJoplin内部形式 pre.joplin-source + data-joplin-source-open/close に変更。手動でコードブロックボタンを押した時と同じ単一ブロック表示になる。
+ *   v8.67 [2026.04.17(金)pm10:35] v8.66のWYSIWYGで何も表示されないバグ修正。Joplin実際のHTML構造は div.joplin-editable 配下に pre.joplin-source (ソース保存) + pre.hljs>code (可視表示) の2つの<pre>が必要。app.asar調査で確定。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -1486,22 +1487,28 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
           } catch(_e2) {}
         }
       } else {
-        // WYSIWYG: Joplin内部の pre.joplin-source 形式で挿入。
-        // 手動でコードブロックツールボタンを押して$記法を入力→OKで戻った時と同じHTML形式。
-        // data-joplin-source-open="```\n"/close="\n```" でMarkdown往復時に正しく ```…``` に復元される。
-        // Markdownへ切替時は repairMupSpan CN=3094_CODEFENCE_UNWRAP が膜記法を検出して ``` を除去。
+        // WYSIWYG: Joplin内部形式のコードブロックで挿入。
+        // 手動で「コードブロック」ツールボタン→$記法入力→OKで戻った時と同じHTML構造。
+        // 実装調査(app.asar): <div class="joplin-editable"> に2つの<pre>を内包。
+        //   ① <pre class="joplin-source" data-joplin-source-open/close>…</pre> (Markdown保存用)
+        //   ② <pre class="hljs"><code>…</code></pre> (可視表示用)
+        // Markdown切替時 data-joplin-source-open="```&#10;" / close="&#10;```" により
+        // ```\n$▼m[...]$ \n``` に復元 → repairMupSpan CN=3094_CODEFENCE_UNWRAP が膜を解放。
         const membrane = _mupMakeMembrane(kind, selected, true);
         const esc = membrane
           .replace(/&/g, '&amp;')
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;');
         const html =
-          '<pre class="joplin-source"' +
-          ' data-joplin-language=""' +
-          ' data-joplin-source-open="\`\`\`\n"' +
-          ' data-joplin-source-close="\n\`\`\`">' +
-          esc +
-          '</pre>';
+          '<div class="joplin-editable">' +
+            '<pre class="joplin-source"' +
+            ' data-joplin-language=""' +
+            ' data-joplin-source-open="\`\`\`&#10;"' +
+            ' data-joplin-source-close="&#10;\`\`\`">' +
+            esc +
+            '</pre>' +
+            '<pre class="hljs"><code>' + esc + '</code></pre>' +
+          '</div>';
         try {
           await joplin.commands.execute('editor.execCommand', {
             name: 'mceInsertContent', value: html,
