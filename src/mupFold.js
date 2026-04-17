@@ -31,6 +31,11 @@
 // v6.3  2026.04.12(日) バグ#1修正: WYSIWYG起動時🟢未表示
 //                      FOLD.ACTIVE.INITに600msフォールバック追加: _activeCNがnullならmupGetActiveCnで復元
 //                      改良点#1: FOLD.TOC.INITを条件なし常時ポーリングに変更（パネル前セッション表示に対応）
+// v7.4  2026.04.17(金) 課題#2修正: Markdownモードで3クリック必要バグ
+//                      原因: 2秒ポーリングとmupSetActive 500ms+300msデバウンスのレース
+//                      対策: _pendingSetActiveUntilでクリック後2000msポーリング停止
+// v7.3  2026.04.17(金) Copy membrane contentsバグ修正: .mup-ftが.mup-bd内に配置されて
+//                      いるため閉じ膜の▲記号までコピーされていた→cloneして.mup-ft除去
 // v7.2  2026.04.17(金) "📋 Copy membrane contents"メニュー追加
 //                      _getBody()で.mup-bdのinnerTextをクリップボードにコピー
 // v6.3  2026.04.14(火) バグ#1修正: _menu/_scrollMenuをdocument.documentElement配下に移動
@@ -106,6 +111,7 @@ var _DEPTH_COLORS = ['#9b6fc4','#5588cc','#4aaa6a','#c8a040','#cc7744','#44aacc'
 // 再レンダリング後もheadの<style>は残るため、🟢は消えない。
 var _activeCN = null;  // スクロールアンカー(v0.9.49)にも兼用
 var _mupSetActiveTimer = null;  // 🟢永続化: mupSetActive送信のデバウンスタイマー
+var _pendingSetActiveUntil = 0;  // v7.4: ポーリングのレース対策。書込完了予定時刻までポーリング停止
 
 var _activeStyle = (function() {
   var st = document.getElementById('mup-active-style');
@@ -150,6 +156,8 @@ function _setActiveMup(mupEl) {
   // WYSIWYG→Markdown切替後に🟢が消える問題の根本修正（v5.8）
   if (_activeCN) {
     clearTimeout(_mupSetActiveTimer);
+    // v7.4: ポーリング停止期間を設定（mupFold 500ms + index.ts 300ms debounce + 書込/再レンダリング余裕 = 2000ms）
+    _pendingSetActiveUntil = Date.now() + 2000;
     _mupSetActiveTimer = setTimeout(function() {
       webviewApi.postMessage('markMupRenderer', { type: 'mupSetActive', cn: _activeCN });
     }, 500);
@@ -552,7 +560,11 @@ function _findNearestVisibleMup() {
   _addItem('📋 Copy membrane contents', function() {
     var body = _getBody(_ctxMup);
     if (!body) return;
-    var text = (body.innerText || body.textContent || '').trim();
+    // .mup-ftは.mup-bd内に配置されているためcloneしてから除去
+    var clone = body.cloneNode(true);
+    var fts = clone.querySelectorAll('.mup-ft');
+    for (var i = 0; i < fts.length; i++) fts[i].parentNode.removeChild(fts[i]);
+    var text = (clone.innerText || clone.textContent || '').trim();
     navigator.clipboard.writeText(text).catch(function(){});
   });
   // ③ 膜の中へ移動（WYSIWYGのみ・ヘッダー/フッターemにカーソルがある時表示）
@@ -728,6 +740,8 @@ function _findNearestVisibleMup() {
     //       cn=nullの場合はmupSetActive(null)を送信→index.tsが閉じ膜の🟢もソースから削除する。
     setInterval(function() {
       if (document.body.getAttribute('contenteditable') === 'true') return; // WYSIWYGはスキップ
+      // v7.4: 最近クリックした場合は書込が完了するまでポーリングをスキップ（レース対策）
+      if (Date.now() < _pendingSetActiveUntil) return;
       webviewApi.postMessage('markMupRenderer', { type: 'mupGetActiveCn' })
         .then(function(res) {
           var sourceCn = res ? (res.cn || null) : null;
