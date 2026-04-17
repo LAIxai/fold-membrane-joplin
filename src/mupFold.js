@@ -1,4 +1,4 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v7.5
+// \▼[CN=FOLD] // Fold Membrane - click handler v7.6
 // ─── changelog ───────────────────────────────────────
 // v7.1  2026.04.12(日) クラス名バグ修正: mup-body→mup-bd（実際のクラス名）
 //                      v7.0まで_getBody()が常にnull返却 → keydownがsetStartAfter(mup)→膜外に飛ぶ
@@ -31,6 +31,9 @@
 // v6.3  2026.04.12(日) バグ#1修正: WYSIWYG起動時🟢未表示
 //                      FOLD.ACTIVE.INITに600msフォールバック追加: _activeCNがnullならmupGetActiveCnで復元
 //                      改良点#1: FOLD.TOC.INITを条件なし常時ポーリングに変更（パネル前セッション表示に対応）
+// v7.6  2026.04.17(金) v7.5再修正: 閉じ膜+↑で出られないバグ残存
+//                      TreeWalker方式ではブラウザがカーソルをft内に吸い戻す場合があるため
+//                      ft.previousSibling末尾に setStartBefore で明示配置する方式に変更
 // v7.5  2026.04.17(金) ↑↓キー膜出入りバグ修正（レンダラv5.4で.mup-ftが.mup-bd内に入った副作用）
 //                      (1) 閉じ膜+↑で膜内に入れない: TreeWalkerが.mup-ft内のテキストを拾っていた
 //                          → _firstTextInBody/_lastTextInBodyヘルパーで.mup-ft除外
@@ -456,9 +459,24 @@ function _findNearestVisibleMup() {
           }
         } else {
           if (!isHd && body) {
-            // フッター+↑ → body末尾テキストへ（.mup-ft除外 → 閉じ膜内に入らない）
-            var ln = _lastTextInBody(body);
-            if (ln) r.setStart(ln, ln.length); else r.setStart(body, body.childNodes.length);
+            // フッター+↑ → body末尾（.mup-ft直前）へ
+            // TreeWalkerでは ブラウザがカーソルをftに吸い込む場合があるので
+            // ft要素の直前に setStartBefore で明示配置する
+            var ftEl = hdFt; // 今カーソルがあるft
+            var prevN = ftEl.previousSibling;
+            if (prevN) {
+              if (prevN.nodeType === 3) {
+                r.setStart(prevN, prevN.length);
+              } else {
+                r.selectNodeContents(prevN);
+                r.collapse(false);
+              }
+            } else {
+              // body直下にftしかない → TreeWalkerで内容テキスト末尾を探す
+              var ln = _lastTextInBody(body);
+              if (ln) r.setStart(ln, ln.length);
+              else r.setStartBefore(ftEl);
+            }
           } else {
             // ヘッダー+↑ → mup全体の前へ
             // setStartBefore(mup) だけだとブラウザが mup内先頭テキストに吸い込む場合がある
