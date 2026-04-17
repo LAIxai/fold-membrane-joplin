@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.64
- * @date    2026.04.17(金)pm09:28
+ * @version 8.65
+ * @date    2026.04.17(金)pm09:50
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -198,6 +198,7 @@
  *   v8.62 [2026.04.17(金)pm05:40] CN=7492/4625: エディタツールバーに▼▲membrane(H1)・▶◀membrane(CN)ボタンを追加。選択範囲を膜で包む。Markdown=直接挿入、WYSIWYG=コードブロック```でラップ（TinyMCE汚染防止）。記法は$なしv2.1形式。
  *   v8.63 [2026.04.17(金)pm06:30] ツールバー膜挿入を$記法($▼m[H1=...]$)に変更（TinyMCE耐性向上）。CN=5318_HEADING2MUP新設: orphan閉じ膜$▲m[H1=...]$を手がかりに、同名の# name/## name/### name heading行を開き膜に自動復元。_extractPfxCnがfont-sizeからH1/H2/H3を推定しCN誤変換を防止。
  *   v8.64 [2026.04.17(金)pm09:28] ツールバー膜挿入をモード別に分岐: Markdown=v2.1記法($なし)・WYSIWYG=$記法+コードブロック包み。Markdownモードは破壊リスクがないためシンプルな記法を維持。
+ *   v8.65 [2026.04.17(金)pm09:50] WYSIWYG挿入をmceInsertContentで<pre><code>HTMLブロックに変更。replaceSelectionでは```がプレーンテキストのまま見える不具合修正。Markdownに切替時```…```に変換→膜として認識される。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -1484,10 +1485,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
           } catch(_e2) {}
         }
       } else {
-        // WYSIWYG: $記法でコードブロック内に挿入（TinyMCE汚染防止）
+        // WYSIWYG: $記法でTinyMCEの<pre><code>ブロックに挿入（汚染防止）
+        // replaceSelectionはプレーンテキスト扱いで```がそのまま見えてしまうため、
+        // mceInsertContentでTinyMCEに実HTMLコードブロックを入れる。
+        // Markdownに切替時はJoplinが ```…``` に変換 → renderer/repairMupSpanが膜として認識。
         const membrane = _mupMakeMembrane(kind, selected, true);
-        const fenced = '\n```\n' + membrane + '\n```\n';
-        try { await joplin.commands.execute('replaceSelection', fenced); } catch(_e) {}
+        const esc = membrane
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+        const html = '<pre><code>' + esc + '</code></pre>';
+        try {
+          await joplin.commands.execute('editor.execCommand', {
+            name: 'mceInsertContent', value: html,
+          });
+        } catch(_e) {
+          // fallback: プレーン``` で挿入
+          try {
+            await joplin.commands.execute('replaceSelection', '\n```\n' + membrane + '\n```\n');
+          } catch(_e2) {}
+        }
       }
     }
 
