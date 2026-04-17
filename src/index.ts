@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.68
- * @date    2026.04.17(金)pm11:05
+ * @version 8.69
+ * @date    2026.04.17(金)pm11:15
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -202,6 +202,7 @@
  *   v8.66 [2026.04.17(金)pm10:12] WYSIWYG挿入をJoplin内部形式 pre.joplin-source + data-joplin-source-open/close に変更。手動でコードブロックボタンを押した時と同じ単一ブロック表示になる。
  *   v8.67 [2026.04.17(金)pm10:35] v8.66のWYSIWYGで何も表示されないバグ修正。Joplin実際のHTML構造は div.joplin-editable 配下に pre.joplin-source (ソース保存) + pre.hljs>code (可視表示) の2つの<pre>が必要。app.asar調査で確定。
  *   v8.68 [2026.04.17(金)pm11:05] H1膜自動修復強化。CN=8276_INLINE_ARROW新設: <span style=...>▼</span> name [⊕..] 型の破損開き膜を検出し、閉じ膜のpfxを逆引きして復元。NAME_SYNCの孤立ペアリングをPass2で cn一致+pfx違い にも対応し、H1→CN化した閉じ膜を開き膜のpfxに同期させる。
+ *   v8.69 [2026.04.17(金)pm11:15] ツールバー膜挿入の前後に空行を2本ずつ追加。Markdown=\n\n…\n\n / WYSIWYG=<p><br></p>で囲み、$$数式・HR罫線・前段落との合体で膜が壊れる問題を回避。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -1527,14 +1528,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
       let selected = '';
       try { selected = (await joplin.commands.execute('selectedText')) as string || ''; } catch(_e) {}
       if (isMarkdown) {
-        // Markdown: $なしv2.1記法でそのまま挿入
+        // Markdown: $なしv2.1記法でそのまま挿入。
+        // 膜の前後に空行を2本ずつ入れて、前後の段落・罫線・$$等と合体しないよう
+        // markdown-itに明確なブロック境界を与える（$$連続やHR隣接での膜破損を回避）。
         const membrane = _mupMakeMembrane(kind, selected, false);
+        const wrapped = '\n\n' + membrane + '\n\n';
         try {
-          await joplin.commands.execute('replaceSelection', '\n' + membrane + '\n');
+          await joplin.commands.execute('replaceSelection', wrapped);
         } catch(_e) {
           try {
             await joplin.commands.execute('editor.execCommand', {
-              name: 'mupInsertAtCursor', args: ['\n' + membrane + '\n'],
+              name: 'mupInsertAtCursor', args: [wrapped],
             });
           } catch(_e2) {}
         }
@@ -1551,7 +1555,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
           .replace(/&/g, '&amp;')
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;');
+        // 前後に空段落を置いて、直前のブロック(罫線・$$数式等)と合体しないブロック境界を作る。
         const html =
+          '<p><br></p>' +
           '<div class="joplin-editable">' +
             '<pre class="joplin-source"' +
             ' data-joplin-language=""' +
@@ -1560,7 +1566,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
             esc +
             '</pre>' +
             '<pre class="hljs"><code>' + esc + '</code></pre>' +
-          '</div>';
+          '</div>' +
+          '<p><br></p>';
         try {
           await joplin.commands.execute('editor.execCommand', {
             name: 'mceInsertContent', value: html,
