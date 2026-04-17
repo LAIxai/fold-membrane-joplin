@@ -1,4 +1,4 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v6.0
+// \▼[CN=FOLD] // Fold Membrane - click handler v7.5
 // ─── changelog ───────────────────────────────────────
 // v7.1  2026.04.12(日) クラス名バグ修正: mup-body→mup-bd（実際のクラス名）
 //                      v7.0まで_getBody()が常にnull返却 → keydownがsetStartAfter(mup)→膜外に飛ぶ
@@ -31,6 +31,12 @@
 // v6.3  2026.04.12(日) バグ#1修正: WYSIWYG起動時🟢未表示
 //                      FOLD.ACTIVE.INITに600msフォールバック追加: _activeCNがnullならmupGetActiveCnで復元
 //                      改良点#1: FOLD.TOC.INITを条件なし常時ポーリングに変更（パネル前セッション表示に対応）
+// v7.5  2026.04.17(金) ↑↓キー膜出入りバグ修正（レンダラv5.4で.mup-ftが.mup-bd内に入った副作用）
+//                      (1) 閉じ膜+↑で膜内に入れない: TreeWalkerが.mup-ft内のテキストを拾っていた
+//                          → _firstTextInBody/_lastTextInBodyヘルパーで.mup-ft除外
+//                      (2) 開始膜+↑で名前頭と//手前を往復: setStartBefore(mup)がmup内に吸い込まれる
+//                          → mup.previousSibling末尾へ明示配置、無ければ親先頭へ
+//                      トリガーをem内から.mup-hd/.mup-ft全域に拡張（em外からも脱出可）
 // v7.4  2026.04.17(金) 課題#2修正: Markdownモードで3クリック必要バグ
 //                      原因: 2秒ポーリングとmupSetActive 500ms+300msデバウンスのレース
 //                      対策: _pendingSetActiveUntilでクリック後2000msポーリング停止
@@ -376,6 +382,29 @@ function _findNearestVisibleMup() {
     return null;
   }
 
+  // v7.5: body配下のテキストノード走査（.mup-ft配下は除外）
+  // 理由: レンダラー v5.4以降、.mup-ftは.mup-bdの子要素として配置される（折畳み時に一緒に隠すため）
+  //       単純なTreeWalkerでは閉じ膜内のテキストまで拾ってしまい、↑↓ナビが機能しない
+  function _makeBodyTW(body) {
+    return document.createTreeWalker(body, NodeFilter.SHOW_TEXT, {
+      acceptNode: function(node) {
+        var p = node.parentElement;
+        return (p && p.closest('.mup-ft'))
+          ? NodeFilter.FILTER_REJECT
+          : NodeFilter.FILTER_ACCEPT;
+      }
+    });
+  }
+  function _firstTextInBody(body) {
+    return body ? _makeBodyTW(body).nextNode() : null;
+  }
+  function _lastTextInBody(body) {
+    if (!body) return null;
+    var tw = _makeBodyTW(body), last = null, n;
+    while ((n = tw.nextNode())) last = n;
+    return last;
+  }
+
   // \▼[CN=FOLD.CTX.PROTECT] // WYSIWYG: emのみ編集可・ラップアラウンド移動
   // .mup-hd/.mup-ft 内で em(コメント) のみ編集可。
   // ← at em先頭 → em末尾へラップ。→ at em末尾 → em先頭へラップ。
@@ -405,41 +434,57 @@ function _findNearestVisibleMup() {
       var range = sel.getRangeAt(0);
       var node = range.startContainer;
       var el = (node.nodeType === 3) ? node.parentElement : node;
+      var hdFt = el.closest('.mup-hd, .mup-ft');
       var em = el.closest('em');
-      if (!em || !el.closest('.mup-hd, .mup-ft')) return; // em内・ヘッダー内のみ処理
       var r = document.createRange();
 
       if (key === 'ArrowDown' || key === 'ArrowUp') {
-        // ↑↓: 膜内部 / 膜外へ脱出
-        var isHd = !!em.closest('.mup-hd');
-        var mup  = em.closest('.mup');
+        // ↑↓: 膜内部 / 膜外へ脱出（em外でも .mup-hd/.mup-ft 全域で処理）
+        if (!hdFt) return;
+        var isHd = hdFt.classList.contains('mup-hd');
+        var mup  = hdFt.closest('.mup');
         var body = _getBody(mup);
         e.preventDefault();
         if (key === 'ArrowDown') {
           if (isHd && body) {
-            // ヘッダーem+↓ → body先頭テキストへ
-            var tw = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
-            var fn = tw.nextNode();
+            // ヘッダー+↓ → body先頭テキストへ（.mup-ft除外）
+            var fn = _firstTextInBody(body);
             if (fn) r.setStart(fn, 0); else r.setStart(body, 0);
           } else {
-            // フッターem+↓ → mup全体の後へ
-            r.setStartAfter(mup || em.closest('.mup-ft'));
+            // フッター+↓ → mup全体の後へ
+            r.setStartAfter(mup || hdFt);
           }
         } else {
           if (!isHd && body) {
-            // フッターem+↑ → body末尾テキストへ
-            var tw2 = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null, false);
-            var ln = null, tn;
-            while ((tn = tw2.nextNode())) ln = tn;
+            // フッター+↑ → body末尾テキストへ（.mup-ft除外 → 閉じ膜内に入らない）
+            var ln = _lastTextInBody(body);
             if (ln) r.setStart(ln, ln.length); else r.setStart(body, body.childNodes.length);
           } else {
-            // ヘッダーem+↑ → mup全体の前へ
-            r.setStartBefore(mup || em.closest('.mup-hd'));
+            // ヘッダー+↑ → mup全体の前へ
+            // setStartBefore(mup) だけだとブラウザが mup内先頭テキストに吸い込む場合がある
+            // → prev兄弟の末尾に明示配置し、なければ親の先頭へ
+            var prev = mup && mup.previousSibling;
+            if (prev) {
+              // prevがテキストノードならその末尾、要素なら末尾の子へ
+              if (prev.nodeType === 3) {
+                r.setStart(prev, prev.length);
+              } else {
+                r.selectNodeContents(prev);
+                r.collapse(false);
+              }
+            } else if (mup && mup.parentNode) {
+              r.setStart(mup.parentNode, 0);
+            } else {
+              r.setStartBefore(hdFt);
+            }
           }
         }
         r.collapse(true); sel.removeAllRanges(); sel.addRange(r);
         return;
       }
+
+      // ← → は em内のみ処理
+      if (!em || !hdFt) return;
 
       if (key === 'ArrowLeft') {
         // em先頭でLeft → em末尾へラップ
