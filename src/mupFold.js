@@ -1,4 +1,4 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v7.6
+// \▼[CN=FOLD] // Fold Membrane - click handler v7.7
 // ─── changelog ───────────────────────────────────────
 // v7.1  2026.04.12(日) クラス名バグ修正: mup-body→mup-bd（実際のクラス名）
 //                      v7.0まで_getBody()が常にnull返却 → keydownがsetStartAfter(mup)→膜外に飛ぶ
@@ -31,6 +31,10 @@
 // v6.3  2026.04.12(日) バグ#1修正: WYSIWYG起動時🟢未表示
 //                      FOLD.ACTIVE.INITに600msフォールバック追加: _activeCNがnullならmupGetActiveCnで復元
 //                      改良点#1: FOLD.TOC.INITを条件なし常時ポーリングに変更（パネル前セッション表示に対応）
+// v7.7  2026.04.17(金) 真の原因判明: 閉じ膜のmup-ftにemが無い → selectionchangeフォールバックが
+//                      setStartAfter(hd)で下方向にバウンス → ユーザーが↑で上に逃げようとするとまた
+//                      ft内に吸い込まれる → 無限下バウンス。em無しのmup-ftはpreviousSibling末尾
+//                      (body末尾テキスト)へ上方向に脱出させるよう修正。
 // v7.6  2026.04.17(金) v7.5再修正: 閉じ膜+↑で出られないバグ残存
 //                      TreeWalker方式ではブラウザがカーソルをft内に吸い戻す場合があるため
 //                      ft.previousSibling末尾に setStartBefore で明示配置する方式に変更
@@ -538,6 +542,21 @@ function _findNearestVisibleMup() {
       var hd = el.closest('.mup-hd, .mup-ft');
       var em = hd ? hd.querySelector('em') : null;
       var r = document.createRange();
+
+      // v7.7: 閉じ膜(em無し)にカーソルが迷い込んだ場合、body末尾テキストへ上方向に脱出させる
+      //       （setStartAfter(hd)だと下方向に出てしまい、ユーザーが上方向の脱出操作をループする）
+      if (!em && hd.classList.contains('mup-ft')) {
+        var prevN = hd.previousSibling;
+        if (prevN) {
+          if (prevN.nodeType === 3) r.setStart(prevN, prevN.length);
+          else { r.selectNodeContents(prevN); r.collapse(false); }
+        } else {
+          r.setStartBefore(hd);
+        }
+        r.collapse(true); sel.removeAllRanges(); sel.addRange(r);
+        return;
+      }
+
       if (el.closest('.mup-status')) {
         // 🟢スパン → em末尾へ
         var ln = em && em.lastChild;
