@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.67
- * @date    2026.04.17(金)pm10:35
+ * @version 8.68
+ * @date    2026.04.17(金)pm11:05
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -201,6 +201,7 @@
  *   v8.65 [2026.04.17(金)pm09:50] WYSIWYG挿入をmceInsertContentで<pre><code>HTMLブロックに変更。replaceSelectionでは```がプレーンテキストのまま見える不具合修正。Markdownに切替時```…```に変換→膜として認識される。
  *   v8.66 [2026.04.17(金)pm10:12] WYSIWYG挿入をJoplin内部形式 pre.joplin-source + data-joplin-source-open/close に変更。手動でコードブロックボタンを押した時と同じ単一ブロック表示になる。
  *   v8.67 [2026.04.17(金)pm10:35] v8.66のWYSIWYGで何も表示されないバグ修正。Joplin実際のHTML構造は div.joplin-editable 配下に pre.joplin-source (ソース保存) + pre.hljs>code (可視表示) の2つの<pre>が必要。app.asar調査で確定。
+ *   v8.68 [2026.04.17(金)pm11:05] H1膜自動修復強化。CN=8276_INLINE_ARROW新設: <span style=...>▼</span> name [⊕..] 型の破損開き膜を検出し、閉じ膜のpfxを逆引きして復元。NAME_SYNCの孤立ペアリングをPass2で cn一致+pfx違い にも対応し、H1→CN化した閉じ膜を開き膜のpfxに同期させる。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -388,6 +389,39 @@ function repairMupSpan(body: string): string {
   fixed = fixed.replace(/`\s*([⇄⇒]+)\s*`/g, '');
   // \▲[CN=5492_repairMupSpan.BADGE_TICK]
 
+  // \▼[CN=8276_repairMupSpan.INLINE_ARROW] // 色付きspan+plain text型の破損開き膜を修復
+  // TinyMCEはH1/H2/H3/CN膜ヘッダーを以下のようにシリアライズすることがある:
+  //   <span style="color:#9b6fc4;">▼</span> new_3245 */ comment* [⊕0+0]
+  // (mup-pfx-* クラスが失われ、nameが<span>から出て plain text になるケース)
+  // 閉じ膜 $▲m[(CN|H[1-3])=name]$ を手がかりに pfx を逆引きして復元する。
+  {
+    const _iaLines = fixed.split('\n');
+    // 閉じ膜のマップ: cn → {pfx, lineIdx}
+    const _closingByCn = new Map<string, {pfx: string, lineIdx: number}>();
+    for (let i = 0; i < _iaLines.length; i++) {
+      const cm = /(?:[▲◀]m|M[▲◀])\[(CN|H[1-3])=([^\]]+)\]/.exec(_iaLines[i]);
+      if (cm) _closingByCn.set(cm[2].trim(), {pfx: cm[1], lineIdx: i});
+    }
+    for (let i = 0; i < _iaLines.length; i++) {
+      const line = _iaLines[i];
+      // 既に正常な膜タグ行ならスキップ
+      if (/(?:[▼▶▲◀]m|M[▼▶▲◀])\[(?:CN|H[1-3])=/.test(line)) continue;
+      // pattern: [<span…>]▼[/</span>] space name [… */comment*] [ [⊕…] ]
+      const m = /^<span[^>]*>([▼▶])<\/span>\s+(\S+)(?:\s+\*\s*(?:\/\/)?\s*([^*\n]*?)\s*\*)?\s*(\[[⊕⊖⊘][^\]\n]*\])?\s*$/.exec(line);
+      if (!m) continue;
+      const arrow = m[1]; const cn = m[2].trim();
+      const comment = m[3] ? m[3].trim() : '';
+      const badge = m[4] || ('[' + (arrow==='▼'?'⊕':'⊖') + '0+0]');
+      // 閉じ膜から pfx を逆引き（なければ H1 をデフォルトに—toolbarボタンのV型と合致）
+      const cl = _closingByCn.get(cn);
+      const pfx = cl ? cl.pfx : 'H1';
+      const cmt = comment ? ' // ' + comment : ' // comment';
+      _iaLines[i] = '$' + arrow + 'm[' + pfx + '=' + cn + ']$' + cmt + ' ' + badge;
+    }
+    fixed = _iaLines.join('\n');
+  }
+  // \▲[CN=8276_repairMupSpan.INLINE_ARROW]
+
   // \▼[CN=5318_repairMupSpan.HEADING2MUP] // 壊れたH1/H2/H3開き膜の復元
   // TinyMCEは $▼m[H1=name]$ の膜ヘッダー（font-size:1.5em;font-weight:bold）を
   // <h1>name</h1> → Markdownでは `# name` に変換してしまう。
@@ -553,20 +587,38 @@ function repairMupSpan(body: string): string {
       }
     }
     // 孤立開始膜と孤立閉じ膜を抽出してペアリング（ドキュメント順）
+    // v8.68: cn完全一致ならpfx違いでもペアリングしpfxも同期。
+    //       H1膜が壊れてopeningがCN化→closingはH1のまま、のようなケースで
+    //       renderer側の stack[k].pfx===cpfx 判定が通らずペアレンダリングされない問題を解消。
     const orphanOpenings = openStack.filter(o => !o.consumed);
     const orphanClosings = closeList.filter(c => !c.consumed);
     const usedCloseIdx = new Set<number>();
     for (const op of orphanOpenings) {
+      // Pass1: pfx一致を優先
+      let matched = false;
       for (const cl of orphanClosings) {
         if (usedCloseIdx.has(cl.lineIdx)) continue;
-        if (cl.pfx !== op.pfx || cl.lineIdx <= op.lineIdx) continue;
+        if (cl.lineIdx <= op.lineIdx) continue;
+        if (cl.pfx !== op.pfx) continue;
         usedCloseIdx.add(cl.lineIdx);
-        // 開始膜名を正として閉じ膜を更新
         if (op.cn !== cl.cn) {
           const oldBracket = '[' + cl.pfx + '=' + cl.cn + ']';
           const newBracket = '[' + op.pfx + '=' + op.cn + ']';
           nsLines[cl.lineIdx] = nsLines[cl.lineIdx].replace(oldBracket, () => newBracket);
         }
+        matched = true;
+        break;
+      }
+      if (matched) continue;
+      // Pass2: cn一致でpfx違いの場合、開き膜のpfxを正として閉じ膜のpfxも同期
+      for (const cl of orphanClosings) {
+        if (usedCloseIdx.has(cl.lineIdx)) continue;
+        if (cl.lineIdx <= op.lineIdx) continue;
+        if (cl.cn !== op.cn) continue;
+        usedCloseIdx.add(cl.lineIdx);
+        const oldBracket = '[' + cl.pfx + '=' + cl.cn + ']';
+        const newBracket = '[' + op.pfx + '=' + op.cn + ']';
+        nsLines[cl.lineIdx] = nsLines[cl.lineIdx].replace(oldBracket, () => newBracket);
         break;
       }
     }
