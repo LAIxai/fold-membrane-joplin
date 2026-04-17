@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.70
- * @date    2026.04.18(土)am02:25
+ * @version 8.71
+ * @date    2026.04.18(土)am02:45
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -204,6 +204,7 @@
  *   v8.68 [2026.04.17(金)pm11:05] H1膜自動修復強化。CN=8276_INLINE_ARROW新設: <span style=...>▼</span> name [⊕..] 型の破損開き膜を検出し、閉じ膜のpfxを逆引きして復元。NAME_SYNCの孤立ペアリングをPass2で cn一致+pfx違い にも対応し、H1→CN化した閉じ膜を開き膜のpfxに同期させる。
  *   v8.69 [2026.04.17(金)pm11:15] ツールバー膜挿入の前後に空行を2本ずつ追加。Markdown=\n\n…\n\n / WYSIWYG=<p><br></p>で囲み、$$数式・HR罫線・前段落との合体で膜が壊れる問題を回避。
  *   v8.70 [2026.04.18(土)am02:25] CN=4712_LINESTART新設: 膜タグ($?[▼▶▲◀]m[…])が行頭にない場合、直前に空行を自動挿入。$$連結($▲m[…]$$▼m[…]$)や前行との合体を検出時点で分離し、markdown-itが$…$を数式ブロック誤認識する前に防御する。repairMupSpanの最初段で実行。
+ *   v8.71 [2026.04.18(土)am02:45] v8.70の正規表現バグ修正。`[^\n]` が膜自身の先頭 `$` を前段コンテンツとして誤マッチし、`$▼m[…]$` を `$\n\n▼m[…]$` に分断していた。行単位スキャンに書き直し: 各行で tagStart > 0 の時のみ分離。正常配置された膜に副作用を与えない。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -270,24 +271,28 @@ function repairMupSpan(body: string): string {
   // \▲[CN=4821_repairMupSpan.ENTITY_DECODE]
 
   // \▼[CN=4712_repairMupSpan.LINESTART] // 膜タグが行頭にない場合、直前に空行を挿入
-  // v8.70: $▲m[…]$$▼m[…]$ のような $ 連結を分離し、markdown-it が $…$ を数式ブロックとして
-  // 誤認識する前に防御する。前行の任意の非改行文字に続く膜タグを検出して `\n\n` を挿入。
-  // 対象: $?(?:M[▼▶▲◀]|[▼▶▲◀]m)\[(?:CN|H[1-3])=…\]$?
+  // v8.71: 行単位スキャンに変更。各行で膜タグ(任意先頭$込み)の出現位置を探し、
+  // tagStart > 0 の場合のみ分離。`$▼m[…]$` のような正常形に副作用を与えない。
+  // $▲m[…]$$▼m[…]$ の連結は、2つ目のタグ位置が > 0 なので分離される。
   {
-    const _lsRe = /([^\n])[ \t]*(\$?(?:M[▼▶▲◀]|[▼▶▲◀]m)\[(?:CN|H[1-3])=)/g;
-    // 反復適用（連結が多段になっても全部分離）
-    let _prev = '';
-    let _guard = 0;
-    while (_prev !== fixed && _guard < 8) {
-      _prev = fixed;
-      fixed = fixed.replace(_lsRe, '$1\n\n$2');
-      _guard++;
+    const _lsLines = fixed.split('\n');
+    for (let li = 0; li < _lsLines.length; li++) {
+      const ln = _lsLines[li];
+      const re = /(\$?)(?:M[▼▶▲◀]|[▼▶▲◀]m)\[(?:CN|H[1-3])=/g;
+      const splits: number[] = [];
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(ln)) !== null) {
+        if (m.index > 0) splits.push(m.index);
+        if (m.index === re.lastIndex) re.lastIndex++;
+      }
+      if (splits.length === 0) continue;
+      let newLn = ln;
+      for (let i = splits.length - 1; i >= 0; i--) {
+        newLn = newLn.slice(0, splits[i]) + '\n\n' + newLn.slice(splits[i]);
+      }
+      _lsLines[li] = newLn;
     }
-    // 膜タグの直後に非空白が続く場合も分離（閉じ膜末尾の $ 直後に何か来たケース）
-    fixed = fixed.replace(
-      /(\$?(?:M[▲◀]|[▲◀]m)\[(?:CN|H[1-3])=[^\]\n]*\]\$?)(?=[^\s\n])/g,
-      '$1\n\n'
-    );
+    fixed = _lsLines.join('\n');
   }
   // \▲[CN=4712_repairMupSpan.LINESTART]
 
