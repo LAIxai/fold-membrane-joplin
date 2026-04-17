@@ -1,8 +1,11 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 6.3
- * @date    2026.04.12(日)
+ * @version 6.4
+ * @date    2026.04.17(金)
+ * @desc    v6.4: 閉じ膜(.mup-ft)に<em> // comment </em>を常設。開始膜と構造対称化し
+ *                カーソル配置可能に。↑↓脱出バグ解消＋次膜への繋ぎメモ記入可。
+ *                閉じ行の `// ...` コメントを独立パースし、開始と別内容を書ける。
  * @desc    v6.3: 開始膜の🟢位置修正: バッジ<code>をmup-badge化し、mup-name直後に空span.mup-statusを追加。
  * @desc    v6.2: 🔖ボタン廃止。RE_BM/RE_BM_DIV削除。閉じ膜に.mup-statusスパン追加（🟢ボタン化対応）。
  * @desc    v6.1: 🟢永続化対応。ソースに🟢があればdata-mup-active="true"を.mupに付加。
@@ -216,12 +219,16 @@ function buildMupHtmlMap(blocks, lines){
     if(b.endLine>=0){
       var cm2=RE_C.exec(lines[b.endLine]);
       var csym=cm2?(cm2[1]||cm2[2]||cm2[3]):'▲';
+      // v6.4: 閉じ膜にも <em> を常設（カーソル配置＋次膜への繋ぎメモ用）
+      var closeRawLine=(lines[b.endLine].match(/\/\/\s*(.+)$/)||[])[1]||'';
+      var closeComment=escH(closeRawLine.replace(/\$`?\s*$/,'').trim());
       map[b.endLine]='<div class="mup-ft" style="padding:2px 8px;font-size:0.8em;color:'+col+';opacity:0.7">'
         +'<span style="display:inline-flex;align-items:center;gap:2px;background:#f8f8f8;padding:1px 6px;border-radius:3px;user-select:none;">'
         +'<span class="mup-ico" style="cursor:default">'+csym+'</span>'
         +'<span class="mup-name mup-pfx-'+escH(b.pfx)+'" style="font-family:monospace;color:#aaa;cursor:default"> '+escH(cn)+'</span>'
         +'<span class="mup-status"></span>'
         +'</span>'
+        +' <em style="color:#555;"> // '+closeComment+' </em>'
         +'</div>'
         +'</div>'  // mup-bd
         +'</div>'; // mup
