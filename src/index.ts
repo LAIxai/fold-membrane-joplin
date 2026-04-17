@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.71
- * @date    2026.04.18(土)am02:45
+ * @version 8.72
+ * @date    2026.04.18(土)am02:55
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -205,6 +205,7 @@
  *   v8.69 [2026.04.17(金)pm11:15] ツールバー膜挿入の前後に空行を2本ずつ追加。Markdown=\n\n…\n\n / WYSIWYG=<p><br></p>で囲み、$$数式・HR罫線・前段落との合体で膜が壊れる問題を回避。
  *   v8.70 [2026.04.18(土)am02:25] CN=4712_LINESTART新設: 膜タグ($?[▼▶▲◀]m[…])が行頭にない場合、直前に空行を自動挿入。$$連結($▲m[…]$$▼m[…]$)や前行との合体を検出時点で分離し、markdown-itが$…$を数式ブロック誤認識する前に防御する。repairMupSpanの最初段で実行。
  *   v8.71 [2026.04.18(土)am02:45] v8.70の正規表現バグ修正。`[^\n]` が膜自身の先頭 `$` を前段コンテンツとして誤マッチし、`$▼m[…]$` を `$\n\n▼m[…]$` に分断していた。行単位スキャンに書き直し: 各行で tagStart > 0 の時のみ分離。正常配置された膜に副作用を与えない。
+ *   v8.72 [2026.04.18(土)am02:55] LINESTART撤去。v8.70/v8.71ともにJoplinのonChange再帰と相互作用して無限ループ発生のため。挿入時の前後改行保証は _mupInsertMembraneWrap 側で既に行っているので、修復パスでの行頭強制は一旦断念し別アプローチを検討。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -270,30 +271,10 @@ function repairMupSpan(body: string): string {
   );
   // \▲[CN=4821_repairMupSpan.ENTITY_DECODE]
 
-  // \▼[CN=4712_repairMupSpan.LINESTART] // 膜タグが行頭にない場合、直前に空行を挿入
-  // v8.71: 行単位スキャンに変更。各行で膜タグ(任意先頭$込み)の出現位置を探し、
-  // tagStart > 0 の場合のみ分離。`$▼m[…]$` のような正常形に副作用を与えない。
-  // $▲m[…]$$▼m[…]$ の連結は、2つ目のタグ位置が > 0 なので分離される。
-  {
-    const _lsLines = fixed.split('\n');
-    for (let li = 0; li < _lsLines.length; li++) {
-      const ln = _lsLines[li];
-      const re = /(\$?)(?:M[▼▶▲◀]|[▼▶▲◀]m)\[(?:CN|H[1-3])=/g;
-      const splits: number[] = [];
-      let m: RegExpExecArray | null;
-      while ((m = re.exec(ln)) !== null) {
-        if (m.index > 0) splits.push(m.index);
-        if (m.index === re.lastIndex) re.lastIndex++;
-      }
-      if (splits.length === 0) continue;
-      let newLn = ln;
-      for (let i = splits.length - 1; i >= 0; i--) {
-        newLn = newLn.slice(0, splits[i]) + '\n\n' + newLn.slice(splits[i]);
-      }
-      _lsLines[li] = newLn;
-    }
-    fixed = _lsLines.join('\n');
-  }
+  // \▼[CN=4712_repairMupSpan.LINESTART] // v8.72: 無限ループ誘発のため撤去
+  // v8.70/v8.71ともにJoplinのonChange再帰との相互作用でループが発生。
+  // 挿入時の前後改行保証は _mupInsertMembraneWrap 側で既に行っているので、
+  // 修復パスでの行頭強制は一旦断念。別アプローチ検討中。
   // \▲[CN=4712_repairMupSpan.LINESTART]
 
   // \▼[CN=5849_repairMupSpan.DOLLARBLOCK] // $$膜ラッパー除去: TinyMCE保護用の$$を解放
