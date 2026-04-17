@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.60
- * @date    2026.04.14(火)
+ * @version 8.62
+ * @date    2026.04.17(金)pm05:40
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -195,6 +195,7 @@
  *   v8.59 2026.04.14(火) mupNoteSizeMapでノートID別管理に刷新。切替時に対応データ復元。更新で初期値も更新。
  *   v8.60 2026.04.14(火) chars計算をbody.trim().lengthに変更。-8/特殊ケース廃止。日本語多バイト対応。
  *   v8.61 2026.04.14(火) 目標文字数機能追加。targetCharsをノートID別に永続保存。プログレスバーが目標モードに切替。
+ *   v8.62 [2026.04.17(金)pm05:40] CN=7492/4625: エディタツールバーに▼▲membrane(H1)・▶◀membrane(CN)ボタンを追加。選択範囲を膜で包む。Markdown=直接挿入、WYSIWYG=コードブロック```でラップ（TinyMCE汚染防止）。記法は$なしv2.1形式。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -226,6 +227,8 @@
 //   \▼[CN=7538_modeWatcher.AUTOREPAIR] // モード変化監視: 双方向遷移検出→自動修復  ⇒ Me ⇒ {9043,2847,6174}
 //     \▼[CN=1647_modeWatcher.HR_RESTORE] // [無効化] Markdown→WYSIWYG: HR自動変換
 //   \▼[CN=3417_noteSelectWatcher] // ノート切替時: 送出ノート自動修復（バックグラウンド）  ⇒ Me ⇒ {9043,6174}
+//   \▼[CN=7492_toolbarMembrane] // ツールバー用: 選択範囲を膜で包む  {8530} ⇒ Me ⇒ {2847,4625}
+//   \▼[CN=4625_toolbarButtons] // EditorToolbarに膜挿入ボタン登録  {7492} ⇒ Me
 //   \▼[CN=3658_insertTemplate] // 膜テンプレート挿入関数  {8530} ⇒ Me ⇒ {7125}
 //     \▼[CN=7125_insertTemplate.MODECHECK] // isMarkdownMode()でMarkdown/WYSIWYG判定  {3658} ⇒ Me ⇒ {2847}
 //     \▼[CN=4983_insertTemplate.MARKDOWN] // Markdownモード: mupInsertAtCursorで直接挿入
@@ -240,7 +243,7 @@
 
 // \▼[CN=4267_imports] // モジュールインポート
 import joplin from 'api';
-import { ContentScriptType, MenuItemLocation, SettingItemType } from 'api/types';
+import { ContentScriptType, MenuItemLocation, SettingItemType, ToolbarButtonLocation } from 'api/types';
 // \▲[CN=4267_imports]
 
 // \▼[CN=9043_repairMupSpan] // TinyMCE破壊をmarkMup記法に修復
@@ -1386,6 +1389,63 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
       },
     });
 
+    // \▼[CN=7492_toolbarMembrane] // ツールバーボタン用: 選択範囲を膜で包む
+    // Markdownモード: replaceSelectionで直接挿入
+    // WYSIWYGモード: コードブロック```…```でラップして挿入（TinyMCE汚染防止）
+    // {8530_commands} ⇒ Me ⇒ {2847_isMarkdownMode, 4625_toolbarButtons}
+    function _mupTimeId(): string {
+      const d = new Date();
+      return String(d.getMinutes()).padStart(2,'0') + String(d.getSeconds()).padStart(2,'0');
+    }
+    function _mupMakeMembrane(kind: 'V' | 'H', content: string): string {
+      // v2.1記法（$なし）。renderer v6.4のRE_O/RE_Cで認識される。
+      const id = _mupTimeId();
+      const open  = kind === 'V' ? '▼m' : '▶m';
+      const close = kind === 'V' ? '▲m' : '◀m';
+      const pfx   = kind === 'V' ? 'H1' : 'CN';
+      const name  = `new_${id}`;
+      const body  = (content && content.length > 0) ? content : '';
+      return `${open}[${pfx}=${name}] // comment [⊕0+0]\n\n${body}\n\n${close}[${pfx}=${name}]`;
+    }
+    async function _mupInsertMembraneWrap(kind: 'V' | 'H') {
+      const isMarkdown = await isMarkdownMode();
+      let selected = '';
+      try { selected = (await joplin.commands.execute('selectedText')) as string || ''; } catch(_e) {}
+      const membrane = _mupMakeMembrane(kind, selected);
+      if (isMarkdown) {
+        // Markdown: そのまま挿入
+        try {
+          await joplin.commands.execute('replaceSelection', '\n' + membrane + '\n');
+        } catch(_e) {
+          // fallback: CM6コマンド経由
+          try {
+            await joplin.commands.execute('editor.execCommand', {
+              name: 'mupInsertAtCursor', args: ['\n' + membrane + '\n'],
+            });
+          } catch(_e2) {}
+        }
+      } else {
+        // WYSIWYG: コードブロックで包んでTinyMCE汚染を防ぐ
+        const fenced = '\n```\n' + membrane + '\n```\n';
+        try { await joplin.commands.execute('replaceSelection', fenced); } catch(_e) {}
+      }
+    }
+
+    await joplin.commands.register({
+      name: 'mupToolbarInsertV',
+      label: '▼▲membrane(H1)',
+      iconName: 'fas fa-caret-down',
+      execute: async () => { await _mupInsertMembraneWrap('V'); },
+    });
+
+    await joplin.commands.register({
+      name: 'mupToolbarInsertH',
+      label: '▶◀membrane(CN)',
+      iconName: 'fas fa-caret-right',
+      execute: async () => { await _mupInsertMembraneWrap('H'); },
+    });
+    // \▲[CN=7492_toolbarMembrane]
+
     await joplin.commands.register({
       name: 'mupInsertLatexInline',
       label: 'Insert LaTeX Inline',
@@ -1595,6 +1655,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
       { commandName: 'mupInsertHR' },
     ], MenuItemLocation.Tools);
     // \▲[CN=2384_menu]
+
+    // \▼[CN=4625_toolbarButtons] // エディタツールバーに膜挿入ボタン登録
+    // {7492_toolbarMembrane} ⇒ Me
+    await joplin.views.toolbarButtons.create(
+      'mupToolbarButtonV',
+      'mupToolbarInsertV',
+      ToolbarButtonLocation.EditorToolbar,
+    );
+    await joplin.views.toolbarButtons.create(
+      'mupToolbarButtonH',
+      'mupToolbarInsertH',
+      ToolbarButtonLocation.EditorToolbar,
+    );
+    // \▲[CN=4625_toolbarButtons]
 
   },
 });
