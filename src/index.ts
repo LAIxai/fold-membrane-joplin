@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.63
- * @date    2026.04.17(金)pm06:30
+ * @version 8.64
+ * @date    2026.04.17(金)pm09:28
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -197,6 +197,7 @@
  *   v8.61 2026.04.14(火) 目標文字数機能追加。targetCharsをノートID別に永続保存。プログレスバーが目標モードに切替。
  *   v8.62 [2026.04.17(金)pm05:40] CN=7492/4625: エディタツールバーに▼▲membrane(H1)・▶◀membrane(CN)ボタンを追加。選択範囲を膜で包む。Markdown=直接挿入、WYSIWYG=コードブロック```でラップ（TinyMCE汚染防止）。記法は$なしv2.1形式。
  *   v8.63 [2026.04.17(金)pm06:30] ツールバー膜挿入を$記法($▼m[H1=...]$)に変更（TinyMCE耐性向上）。CN=5318_HEADING2MUP新設: orphan閉じ膜$▲m[H1=...]$を手がかりに、同名の# name/## name/### name heading行を開き膜に自動復元。_extractPfxCnがfont-sizeからH1/H2/H3を推定しCN誤変換を防止。
+ *   v8.64 [2026.04.17(金)pm09:28] ツールバー膜挿入をモード別に分岐: Markdown=v2.1記法($なし)・WYSIWYG=$記法+コードブロック包み。Markdownモードは破壊リスクがないためシンプルな記法を維持。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -1454,28 +1455,28 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
       const d = new Date();
       return String(d.getMinutes()).padStart(2,'0') + String(d.getSeconds()).padStart(2,'0');
     }
-    function _mupMakeMembrane(kind: 'V' | 'H', content: string): string {
-      // $記法（$▼m[...]$）を使用。WYSIWYGのTinyMCE汚染に対して耐性が高い
-      // （$で囲むとLaTeXとして保護パスに載りやすい）。
+    function _mupMakeMembrane(kind: 'V' | 'H', content: string, dollar: boolean): string {
+      // dollar=false: v2.1記法（$なし）→Markdownモード用
+      // dollar=true : $記法（$▼m[...]$）→WYSIWYGモード用（TinyMCE耐性向上）
       const id = _mupTimeId();
       const open  = kind === 'V' ? '▼m' : '▶m';
       const close = kind === 'V' ? '▲m' : '◀m';
       const pfx   = kind === 'V' ? 'H1' : 'CN';
       const name  = `new_${id}`;
       const body  = (content && content.length > 0) ? content : '';
-      return `$${open}[${pfx}=${name}]$ // comment [⊕0+0]\n\n${body}\n\n$${close}[${pfx}=${name}]$`;
+      const $o = dollar ? '$' : '';
+      return `${$o}${open}[${pfx}=${name}]${$o} // comment [⊕0+0]\n\n${body}\n\n${$o}${close}[${pfx}=${name}]${$o}`;
     }
     async function _mupInsertMembraneWrap(kind: 'V' | 'H') {
       const isMarkdown = await isMarkdownMode();
       let selected = '';
       try { selected = (await joplin.commands.execute('selectedText')) as string || ''; } catch(_e) {}
-      const membrane = _mupMakeMembrane(kind, selected);
       if (isMarkdown) {
-        // Markdown: そのまま挿入
+        // Markdown: $なしv2.1記法でそのまま挿入
+        const membrane = _mupMakeMembrane(kind, selected, false);
         try {
           await joplin.commands.execute('replaceSelection', '\n' + membrane + '\n');
         } catch(_e) {
-          // fallback: CM6コマンド経由
           try {
             await joplin.commands.execute('editor.execCommand', {
               name: 'mupInsertAtCursor', args: ['\n' + membrane + '\n'],
@@ -1483,7 +1484,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
           } catch(_e2) {}
         }
       } else {
-        // WYSIWYG: コードブロックで包んでTinyMCE汚染を防ぐ
+        // WYSIWYG: $記法でコードブロック内に挿入（TinyMCE汚染防止）
+        const membrane = _mupMakeMembrane(kind, selected, true);
         const fenced = '\n```\n' + membrane + '\n```\n';
         try { await joplin.commands.execute('replaceSelection', fenced); } catch(_e) {}
       }
