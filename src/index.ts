@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.62
- * @date    2026.04.17(金)pm05:40
+ * @version 8.63
+ * @date    2026.04.17(金)pm06:30
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -196,6 +196,7 @@
  *   v8.60 2026.04.14(火) chars計算をbody.trim().lengthに変更。-8/特殊ケース廃止。日本語多バイト対応。
  *   v8.61 2026.04.14(火) 目標文字数機能追加。targetCharsをノートID別に永続保存。プログレスバーが目標モードに切替。
  *   v8.62 [2026.04.17(金)pm05:40] CN=7492/4625: エディタツールバーに▼▲membrane(H1)・▶◀membrane(CN)ボタンを追加。選択範囲を膜で包む。Markdown=直接挿入、WYSIWYG=コードブロック```でラップ（TinyMCE汚染防止）。記法は$なしv2.1形式。
+ *   v8.63 [2026.04.17(金)pm06:30] ツールバー膜挿入を$記法($▼m[H1=...]$)に変更（TinyMCE耐性向上）。CN=5318_HEADING2MUP新設: orphan閉じ膜$▲m[H1=...]$を手がかりに、同名の# name/## name/### name heading行を開き膜に自動復元。_extractPfxCnがfont-sizeからH1/H2/H3を推定しCN誤変換を防止。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -383,6 +384,47 @@ function repairMupSpan(body: string): string {
   fixed = fixed.replace(/`\s*([⇄⇒]+)\s*`/g, '');
   // \▲[CN=5492_repairMupSpan.BADGE_TICK]
 
+  // \▼[CN=5318_repairMupSpan.HEADING2MUP] // 壊れたH1/H2/H3開き膜の復元
+  // TinyMCEは $▼m[H1=name]$ の膜ヘッダー（font-size:1.5em;font-weight:bold）を
+  // <h1>name</h1> → Markdownでは `# name` に変換してしまう。
+  // 対応する閉じ膜 $▲m[H1=name]$ は残っているため、orphan閉じ膜を手がかりに
+  // 直前の `# name` / `## name` / `### name` heading行を検出して開き膜に復元する。
+  // CN=7384(SPAN2MUP)より前に実行し、span方式より先にH1系を救済する。
+  {
+    const _hmLines = fixed.split('\n');
+    // 正常なopen/close膜を収集
+    const _goodOpens = new Set<string>();
+    const _goodCloses: Array<{lineIdx: number, pfx: string, cn: string}> = [];
+    for (let i = 0; i < _hmLines.length; i++) {
+      const om = /(?:[▼▶]m|M[▼▶])\[(H[1-3])=([^\]]+)\]/.exec(_hmLines[i]);
+      const cm = /(?:[▲◀]m|M[▲◀])\[(H[1-3])=([^\]]+)\]/.exec(_hmLines[i]);
+      if (om) _goodOpens.add(om[1]+'='+om[2].trim());
+      if (cm) _goodCloses.push({lineIdx: i, pfx: cm[1], cn: cm[2].trim()});
+    }
+    // orphan閉じ膜について、直前のheading行を探索
+    for (const cl of _goodCloses) {
+      const key = cl.pfx+'='+cl.cn;
+      if (_goodOpens.has(key)) continue; // 対応開き膜あり→スキップ
+      const lvl = parseInt(cl.pfx.slice(1)); // H1→1
+      const hashes = '#'.repeat(lvl);
+      // 閉じ膜の上方向に走査して、同名の heading 行を検出
+      for (let i = cl.lineIdx - 1; i >= 0; i--) {
+        const line = _hmLines[i];
+        // 他の膜タグ行に当たったら打ち切り
+        if (/(?:[▼▶▲◀]m|M[▼▶▲◀])\[(?:CN|H[1-3])=/.test(line)) break;
+        // `# name` 形式のheadingでcn名が一致するか
+        const hm = new RegExp('^\\s*'+hashes+'\\s+(.+?)\\s*$').exec(line);
+        if (hm && hm[1].trim() === cl.cn) {
+          _hmLines[i] = '$▼m['+cl.pfx+'='+cl.cn+']$ // comment [⊕0+0]';
+          _goodOpens.add(key);
+          break;
+        }
+      }
+    }
+    fixed = _hmLines.join('\n');
+  }
+  // \▲[CN=5318_repairMupSpan.HEADING2MUP]
+
   // \▼[CN=7384_repairMupSpan.SPAN2MUP] // span形式→markMup記法に変換
   // v2.3: 閉じ膜(\▲[CN=xxx])をナビゲーターとして使い、対応する壊れた開き膜を検出・修復。
   // 戦略: ①閉じ膜のCNキー収集 → ②開き膜の欠損検出 → ③<span>▼</span>行を修復
@@ -420,8 +462,23 @@ function repairMupSpan(body: string): string {
   }
   // --- 旧方式: spanクラスパース（H1=型など、閉じ膜が既に正常な場合にも対応） ---
   function _extractPfxCn(cnParts: string): { pfx: string; cn: string } {
-    const pfxMatch = cnParts.match(/class="[^"]*mup-pfx-([^"\s]+)/);
-    const pfx = pfxMatch ? pfxMatch[1] : 'CN';
+    const pfxMatch = cnParts.match(/class="[^"]*mup-pfx-(H[1-3]|CN)/);
+    // font-size 属性から H1/H2/H3 を推定（class が失われたケース対応）
+    let pfx: string;
+    if (pfxMatch) {
+      pfx = pfxMatch[1];
+    } else {
+      const fsMatch = cnParts.match(/font-size:\s*(\d+(?:\.\d+)?)em/);
+      if (fsMatch) {
+        const fs = parseFloat(fsMatch[1]);
+        if      (fs >= 1.4) pfx = 'H1';
+        else if (fs >= 1.2) pfx = 'H2';
+        else if (fs >= 1.05) pfx = 'H3';
+        else                 pfx = 'CN';
+      } else {
+        pfx = 'CN';
+      }
+    }
     const rawCn = cnParts.replace(/<[^>]+>/g, '');
     const cn = pfx === 'CN' ? rawCn.replace(/\s+/g, '') : rawCn.trim();
     return { pfx, cn };
@@ -1398,14 +1455,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
       return String(d.getMinutes()).padStart(2,'0') + String(d.getSeconds()).padStart(2,'0');
     }
     function _mupMakeMembrane(kind: 'V' | 'H', content: string): string {
-      // v2.1記法（$なし）。renderer v6.4のRE_O/RE_Cで認識される。
+      // $記法（$▼m[...]$）を使用。WYSIWYGのTinyMCE汚染に対して耐性が高い
+      // （$で囲むとLaTeXとして保護パスに載りやすい）。
       const id = _mupTimeId();
       const open  = kind === 'V' ? '▼m' : '▶m';
       const close = kind === 'V' ? '▲m' : '◀m';
       const pfx   = kind === 'V' ? 'H1' : 'CN';
       const name  = `new_${id}`;
       const body  = (content && content.length > 0) ? content : '';
-      return `${open}[${pfx}=${name}] // comment [⊕0+0]\n\n${body}\n\n${close}[${pfx}=${name}]`;
+      return `$${open}[${pfx}=${name}]$ // comment [⊕0+0]\n\n${body}\n\n$${close}[${pfx}=${name}]$`;
     }
     async function _mupInsertMembraneWrap(kind: 'V' | 'H') {
       const isMarkdown = await isMarkdownMode();
