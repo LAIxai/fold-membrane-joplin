@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.74
- * @date    2026.04.18(土)am11:35
+ * @version 8.75
+ * @date    2026.04.18(土)am11:55
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -208,6 +208,7 @@
  *   v8.72 [2026.04.18(土)am02:55] LINESTART撤去。v8.70/v8.71ともにJoplinのonChange再帰と相互作用して無限ループ発生のため。挿入時の前後改行保証は _mupInsertMembraneWrap 側で既に行っているので、修復パスでの行頭強制は一旦断念し別アプローチを検討。
  *   v8.73 [2026.04.18(土)am11:05] CN=1920_BACKSLASH⑥の致命バグ修正。/\\/g(全削除)→/\\{3,}/g(3個以上のみ削除)。ユーザ検証により判明: 膜プラグイン無効化時は \\ が安定しJoplin自体のバグではない。有効時のみ \\ (正常エスケープ)が誤削除→WYSIWYG往復で再エスケープ→倍増という増殖メカニズムが確定。闇雲な全削除をやめ、正常エスケープ(\\=1個、\\\\=2個のリテラル)を保護。
  *   v8.74 [2026.04.18(土)am11:35] BACKSLASH⑥改良。3個以上を削除('')→2個に収束('\\\\')へ変更。ユーザ指示: 生データで2個残す。Markdownの正常エスケープ形式(\\=リテラル\1個)を維持するため、暴走残骸も2個に丸めて意味的に破壊しないようにする。
+ *   v8.75 [2026.04.18(土)am11:55] CN=7815_menu.REPAIR_ACCEL + CN=7816_repairSpan.SYNC_AFTER 新設。Cmd+S に Repair Membranes を割り当て、修復実行後に synchronize も呼ぶ「修復→同期」統合ショートカット。ユーザ指示: ノート切替で自動修復→更新日が動く問題を回避するため手動トリガに移行。マークダウンモードへの切替も不要になる。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -1665,6 +1666,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
           repaired = repairMupSpan(repaired);
           if (repaired !== note.body) await joplin.data.put(['notes', note.id], null, { body: repaired });
         }
+        // \▼[CN=7816_repairSpan.SYNC_AFTER] // 修復後に同期も実行（Cmd+S連動）
+        // v8.75 [2026.04.18(土)am11:55] Cmd+S=修復+同期の統合動作。
+        //   Joplin本来のCmd+S=synchronizeを尊重しつつ、修復も先行実行。
+        try { await joplin.commands.execute('synchronize'); } catch(_e) {}
+        // \▲[CN=7816_repairSpan.SYNC_AFTER]
         // \▲[CN=9015_mupRepairSpan.EXEC]
       },
     });
@@ -1811,7 +1817,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
     await joplin.views.menus.create('mupMenu', 'Fold Membrane', [
       { commandName: 'mupInsertV' },
       { commandName: 'mupInsertH' },
-      { commandName: 'mupRepairSpan' },
+      // \▼[CN=7815_menu.REPAIR_ACCEL] // Cmd+S で修復→同期（CN=9015の手動起動ショートカット）
+      // v8.75 [2026.04.18(土)am11:55] ユーザ指示: ノート切替で自動修復されると更新日が動いて
+      //   しまうので、手動トリガを提供。Cmd+S=Joplin同期と重なるが、修復後に
+      //   synchronize コマンドも呼ぶことで「修復→同期」を1アクションに統合する。
+      { commandName: 'mupRepairSpan', accelerator: 'CmdOrCtrl+S' },
+      // \▲[CN=7815_menu.REPAIR_ACCEL]
       { commandName: 'mupRepairEntities' },
       { commandName: 'mupRepairBackslash' },
       { commandName: 'mupMigrateToM' },
