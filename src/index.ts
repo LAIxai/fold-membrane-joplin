@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.76
- * @date    2026.04.18(土)pm00:20
+ * @version 8.77
+ * @date    2026.04.18(土)pm00:55
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -210,6 +210,7 @@
  *   v8.74 [2026.04.18(土)am11:35] BACKSLASH⑥改良。3個以上を削除('')→2個に収束('\\\\')へ変更。ユーザ指示: 生データで2個残す。Markdownの正常エスケープ形式(\\=リテラル\1個)を維持するため、暴走残骸も2個に丸めて意味的に破壊しないようにする。
  *   v8.75 [2026.04.18(土)am11:55] CN=7815_menu.REPAIR_ACCEL + CN=7816_repairSpan.SYNC_AFTER 新設。Cmd+S に Repair Membranes を割り当て、修復実行後に synchronize も呼ぶ「修復→同期」統合ショートカット。ユーザ指示: ノート切替で自動修復→更新日が動く問題を回避するため手動トリガに移行。マークダウンモードへの切替も不要になる。
  *   v8.76 [2026.04.18(土)pm00:20] CN=9015: toggleEditors撤去。WYSIWYGのまま修復するため、CN=3417と同じ editor.setText 方式に統一。①TinyMCE書込み待ちポーリング(1秒) → ②repairMupSpan → ③DB書き戻し + editor.setText で現在のエディタをリフレッシュ。ユーザ要望: Cmd+SでWYSIWYGを維持したまま修復したい。
+ *   v8.77 [2026.04.18(土)pm00:55] CN=4481_ITALIC_COMMENT 拡張。現行v2.1 m-suffix形式($▼m[...]$) に対応するルール追加。WYSIWYGでコメント編集後Cmd+S修復するとカウンターバッジ直前に * が残る長年の現象を解消。旧ルールはM-prefix形式専用で m-suffix をキャッチできていなかった。孤立 * の保険ルールも追加。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -567,7 +568,14 @@ function repairMupSpan(body: string): string {
   // \▼[CN=4481_repairMupSpan.ITALIC_COMMENT] // *// comment* の italic マーカー除去
   // TinyMCEが<em>// comment</em>を * // comment * にシリアライズした残骸を除去する
   // CN=7384(SPAN2MUP)のregexがcommentをキャプチャし損ねた場合に膜の行末に残る
+  // 旧M-prefix形式用
   fixed = fixed.replace(/(M[▼▶]\[[^\]\n]+\])[ \t]+\*[ \t]*(\/\/[^*\n]*?)[ \t]*\*/g, '$1 $2');
+  // v8.77 [2026.04.18(土)pm00:55] 現行v2.1 m-suffix形式($▼m[...]$) にも対応。
+  //   WYSIWYGでコメントを編集後Cmd+S修復すると、カウンターバッジ直前に * が残る現象の修正。
+  //   原因: TinyMCEが<em>をMarkdown化する際に *// comment* を生成し、m-suffixにマッチするルールが無かった。
+  fixed = fixed.replace(/(\$?[▼▶]m\[[^\]\n]+\]\$?)[ \t]+\*[ \t]*(\/\/[^*\n]*?)[ \t]*\*/g, '$1 $2');
+  // さらに保険: コメント末尾〜バッジ直前の孤立 * を除去（片方だけ残るケース）
+  fixed = fixed.replace(/(\/\/[^*\n]*?)[ \t]*\*[ \t]*(\[[⊕⊖⊘])/g, '$1 $2');
   // \▲[CN=4481_repairMupSpan.ITALIC_COMMENT]
 
   // \▼[CN=6291_repairMupSpan.NAME_SYNC] // WYSIWYG編集後の開閉膜名不一致修正
