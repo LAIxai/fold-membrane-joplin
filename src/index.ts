@@ -213,6 +213,7 @@
  *   v8.77 [2026.04.18(土)pm00:55] CN=4481_ITALIC_COMMENT 拡張。現行v2.1 m-suffix形式($▼m[...]$) に対応するルール追加。WYSIWYGでコメント編集後Cmd+S修復するとカウンターバッジ直前に * が残る長年の現象を解消。旧ルールはM-prefix形式専用で m-suffix をキャッチできていなかった。孤立 * の保険ルールも追加。
  *   v8.78 [2026.04.18(土)pm01:10] CN=4481_ITALIC_COMMENT 追加ルール: 先頭孤立 * (膜タグ〜// の間) も除去。v8.77のルールは *…* ペアが揃っている場合のみ動作していたため、WYSIWYGで片割れ * のみ残るケース ($▼m[…]$ * // comment) が取り残されていた。m-suffix / M-prefix 両対応。
  *   v8.79 [2026.04.18(土)pm01:30] 自動修復を全面停止(Cmd+Sトリガのみに)。CN=3417_noteSelectWatcher の送出/受信ノート自動修復、および CN=7538 の switchedToMarkdown 修復ブロックを無効化。ユーザ指示: 書込みなしでのノート切替は普通の操作であり、意図的にCmd+Sを押したときだけ修復するべき。updated_time追跡とCN=9031のNOTE_SWITCH再描画は維持。
+ *   v8.80 [2026.04.18(土)pm01:35] WYSIWYG→Markdownモード切替時の修復は復活。ユーザ指示: 通常のLaTeX(マクロ展開等)と同様、モード切替は意図的操作なので修復してよい。ノート切替(CN=3417)の自動修復停止は維持。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -1294,9 +1295,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
       _autoRepairPrevNoteId = nowNoteId;
       if (!switchedToMarkdown && !switchedToWYSIWYG && !noteChangedInWYSIWYG) return;
 
-      // v8.79 [2026.04.18(土)pm01:30] 自動修復を停止。ユーザ指示によりCmd+Sトリガのみ。
-      // WYSIWYG→Markdownモード切替時の修復もスキップ（CN=9031のノート切替再描画のみ残す）。
-      if (false && switchedToMarkdown) {
+      // v8.80 [2026.04.18(土)pm01:35] WYSIWYG→Markdownモード切替修復は復活（通常のLaTeX同様、
+      // モード切替は意図的操作なので修復してよい）。v8.79で無効化したノート切替の自動修復だけ停止を維持。
+      if (switchedToMarkdown) {
         // WYSIWYG→Markdown切替を検出 → CN=6302と同じ修復ロジック
         // 事前フェッチ済みnoteにすでに破壊パターンあり → 即修復（v7.68相当）
         // なければポーリング（TinyMCEのシリアライズDB書込み待ち）
