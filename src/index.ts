@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.75
- * @date    2026.04.18(土)am11:55
+ * @version 8.76
+ * @date    2026.04.18(土)pm00:20
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -209,6 +209,7 @@
  *   v8.73 [2026.04.18(土)am11:05] CN=1920_BACKSLASH⑥の致命バグ修正。/\\/g(全削除)→/\\{3,}/g(3個以上のみ削除)。ユーザ検証により判明: 膜プラグイン無効化時は \\ が安定しJoplin自体のバグではない。有効時のみ \\ (正常エスケープ)が誤削除→WYSIWYG往復で再エスケープ→倍増という増殖メカニズムが確定。闇雲な全削除をやめ、正常エスケープ(\\=1個、\\\\=2個のリテラル)を保護。
  *   v8.74 [2026.04.18(土)am11:35] BACKSLASH⑥改良。3個以上を削除('')→2個に収束('\\\\')へ変更。ユーザ指示: 生データで2個残す。Markdownの正常エスケープ形式(\\=リテラル\1個)を維持するため、暴走残骸も2個に丸めて意味的に破壊しないようにする。
  *   v8.75 [2026.04.18(土)am11:55] CN=7815_menu.REPAIR_ACCEL + CN=7816_repairSpan.SYNC_AFTER 新設。Cmd+S に Repair Membranes を割り当て、修復実行後に synchronize も呼ぶ「修復→同期」統合ショートカット。ユーザ指示: ノート切替で自動修復→更新日が動く問題を回避するため手動トリガに移行。マークダウンモードへの切替も不要になる。
+ *   v8.76 [2026.04.18(土)pm00:20] CN=9015: toggleEditors撤去。WYSIWYGのまま修復するため、CN=3417と同じ editor.setText 方式に統一。①TinyMCE書込み待ちポーリング(1秒) → ②repairMupSpan → ③DB書き戻し + editor.setText で現在のエディタをリフレッシュ。ユーザ要望: Cmd+SでWYSIWYGを維持したまま修復したい。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -1639,32 +1640,38 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
       label: 'Repair Membranes ✨',
       iconName: 'fas fa-wrench',
       execute: async () => {
-        // \▼[CN=9015_mupRepairSpan.EXEC] // Repair Membranes: CN=6302と同じロジックでWYSIWYG対応
+        // \▼[CN=9015_mupRepairSpan.EXEC] // Repair Membranes: WYSIWYGのまま修復
         // {8530_commands} ⇒ Me ⇒ {9043_repairMupSpan}
-        if (!(await isMarkdownMode())) {
-          // WYSIWYGモード: CN=6302と同じ手順 (toggleEditors→ポーリング→修復)
-          await joplin.commands.execute('toggleEditors');
-          for (let i = 0; i < 20; i++) {
-            await new Promise(r => setTimeout(r, 100));
-            if (await isMarkdownMode()) break;
-          }
-          let note = await joplin.workspace.selectedNote();
-          for (let i = 0; i < 20; i++) {
+        // v8.76 [2026.04.18(土)pm00:20] toggleEditors撤去。CN=3417と同じ editor.setText 方式に統一:
+        //   WYSIWYGでもポーリングでDB反映を待ってから直接修復→書き戻し→editor.setText でリフレッシュ。
+        //   ユーザ要望: Cmd+SでWYSIWYGを維持したまま修復したい。
+        const isMd = await isMarkdownMode();
+        // ① WYSIWYG時はTinyMCEがDBにMarkdownをシリアライズするのを待つ
+        //   (onChangeのdebounce完了まで最大1秒ポーリング。破損検出 or タイムアウトで抜ける)
+        let note = await joplin.workspace.selectedNote();
+        if (!note) return;
+        if (!isMd) {
+          for (let i = 0; i < 5; i++) {
             await new Promise(r => setTimeout(r, 200));
-            note = await joplin.workspace.selectedNote();
-            if (note && (note.body.includes('<span') || /^\\{3}$/m.test(note.body) || /^🔖 .+$/m.test(note.body) || /\\{2,}[▼▶▲◀]/.test(note.body))) break;
+            try {
+              const fresh = await joplin.data.get(['notes', note.id], { fields: ['id', 'body'] });
+              if (fresh?.body) {
+                note = { ...note, body: fresh.body } as any;
+                if (_hasDmg(fresh.body)) break;
+              }
+            } catch(_e) { break; }
           }
-          if (!note) return;
-          let repaired = note.body.replace(/^🔖 (.+)$/gm, '$🔖m[$1]$');
-          repaired = repairMupSpan(repaired);
-          if (repaired !== note.body) await joplin.data.put(['notes', note.id], null, { body: repaired });
-        } else {
-          // Markdownモード: 直接修復
-          const note = await joplin.workspace.selectedNote();
-          if (!note) return;
-          let repaired = note.body.replace(/^🔖 (.+)$/gm, '$🔖m[$1]$');
-          repaired = repairMupSpan(repaired);
-          if (repaired !== note.body) await joplin.data.put(['notes', note.id], null, { body: repaired });
+        }
+        // ② 修復
+        let repaired = note.body.replace(/^🔖 (.+)$/gm, '$🔖m[$1]$');
+        repaired = repairMupSpan(repaired);
+        // ③ 変化があればDBに書き戻し → editor.setText で現在のエディタをリフレッシュ
+        if (repaired !== note.body) {
+          await joplin.data.put(['notes', note.id], null, { body: repaired });
+          const _stillSelected = await joplin.workspace.selectedNote();
+          if (_stillSelected?.id === note.id) {
+            try { await joplin.commands.execute('editor.setText', repaired); } catch(_e) {}
+          }
         }
         // \▼[CN=7816_repairSpan.SYNC_AFTER] // 修復後に同期も実行（Cmd+S連動）
         // v8.75 [2026.04.18(土)am11:55] Cmd+S=修復+同期の統合動作。
