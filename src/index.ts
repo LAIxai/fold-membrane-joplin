@@ -214,6 +214,7 @@
  *   v8.78 [2026.04.18(土)pm01:10] CN=4481_ITALIC_COMMENT 追加ルール: 先頭孤立 * (膜タグ〜// の間) も除去。v8.77のルールは *…* ペアが揃っている場合のみ動作していたため、WYSIWYGで片割れ * のみ残るケース ($▼m[…]$ * // comment) が取り残されていた。m-suffix / M-prefix 両対応。
  *   v8.79 [2026.04.18(土)pm01:30] 自動修復を全面停止(Cmd+Sトリガのみに)。CN=3417_noteSelectWatcher の送出/受信ノート自動修復、および CN=7538 の switchedToMarkdown 修復ブロックを無効化。ユーザ指示: 書込みなしでのノート切替は普通の操作であり、意図的にCmd+Sを押したときだけ修復するべき。updated_time追跡とCN=9031のNOTE_SWITCH再描画は維持。
  *   v8.80 [2026.04.18(土)pm01:35] WYSIWYG→Markdownモード切替時の修復は復活。ユーザ指示: 通常のLaTeX(マクロ展開等)と同様、モード切替は意図的操作なので修復してよい。ノート切替(CN=3417)の自動修復停止は維持。
+ *   v8.81 [2026.04.18(土)pm07:30] CN=6291_NAME_SYNC を「膜タグ全体同期」に拡張。markMup v3.0 不可侵膜(M)の受理: 正規表現 `[mM]` 対応。CN↔H1切替バグを修正(Pass2でtag/pfx/cn全てを開き膜に合わせる)。Pass3追加: cnまで変化した中間状態の救済としてドキュメント順孤立ペアも同期。これにより「開閉膜のどちらを編集しても、tag letter・pfx・cn が全て同期」が実現。mupEditor.js v2.3 と併せてリアルタイム同期も全文ペアリング方式に刷新。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -586,31 +587,32 @@ function repairMupSpan(body: string): string {
   fixed = fixed.replace(/(M[▼▶]\[[^\]\n]+\])[ \t]+\*+[ \t]*(\/\/)/g, '$1 $2');
   // \▲[CN=4481_repairMupSpan.ITALIC_COMMENT]
 
-  // \▼[CN=6291_repairMupSpan.NAME_SYNC] // WYSIWYG編集後の開閉膜名不一致修正
+  // \▼[CN=6291_repairMupSpan.NAME_SYNC] // WYSIWYG編集後の開閉膜タグ全体同期
+  // v8.81 [2026.04.18(土)pm07:30] tag letter (m/M) も同期対象に追加。不可侵膜(M)対応。
+  //                               同時に CN↔H1 切替バグを修正（Pass2でtag/pfx/cn全てを同期）。
   // WYSIWYGモードではmupEditor.js（CM6プラグイン）が動作しないため、
-  // 開始膜の名前を変更しても閉じ膜が連動しない。
-  // 孤立膜方式（v2.1）: 完全一致(pfx+cn)するペアを消費し、残った孤立開始膜と
-  // 孤立閉じ膜を順番にマッチさせて名前を同期する。
-  // これにより同名入れ子膜（例: new1内にnew1）で内側膜が誤更新される旧バグを修正。
+  // 開始膜を変更しても閉じ膜が連動しない。Cmd+S 修復で最終的に一致させる。
+  // 孤立膜方式: 完全一致(tag+pfx+cn)するペアを消費し、残った孤立開始膜と
+  // 孤立閉じ膜を順番にマッチさせて開き膜に合わせて閉じ膜を書き換え。
   {
-    const RE_NS_O = /^[ \t]*\$?(?:▼|▶)m\[(CN|H[1-3])=([^\]]+)\]\$?/;
-    const RE_NS_C = /^[ \t]*\$?(?:▲|◀)m\[(CN|H[1-3])=([^\]]+)\]\$?/;
+    const RE_NS_O = /^[ \t]*\$?(?:▼|▶)([mM])\[(CN|H[1-3])=([^\]]+)\]\$?/;
+    const RE_NS_C = /^[ \t]*\$?(?:▲|◀)([mM])\[(CN|H[1-3])=([^\]]+)\]\$?/;
     const nsLines = fixed.split('\n');
     // すべての開始膜・閉じ膜を行番号付きで収集
-    type NsEntry = {lineIdx: number; pfx: string; cn: string; consumed: boolean};
+    type NsEntry = {lineIdx: number; tag: string; pfx: string; cn: string; consumed: boolean};
     const openStack: NsEntry[] = [];
     const closeList: NsEntry[] = [];
     for (let i = 0; i < nsLines.length; i++) {
       const om = RE_NS_O.exec(nsLines[i]);
       const cm = RE_NS_C.exec(nsLines[i]);
-      if (om) openStack.push({lineIdx: i, pfx: om[1], cn: om[2].trim(), consumed: false});
-      else if (cm) closeList.push({lineIdx: i, pfx: cm[1], cn: cm[2].trim(), consumed: false});
+      if (om) openStack.push({lineIdx: i, tag: om[1], pfx: om[2], cn: om[3].trim(), consumed: false});
+      else if (cm) closeList.push({lineIdx: i, tag: cm[1], pfx: cm[2], cn: cm[3].trim(), consumed: false});
     }
-    // 完全一致(pfx+cn)するペアを消費（逆順スタックで正しいネスト順に処理）
+    // 完全一致(tag+pfx+cn)するペアを消費（逆順スタックで正しいネスト順に処理）
     for (const cl of closeList) {
       for (let k = openStack.length - 1; k >= 0; k--) {
         const op = openStack[k];
-        if (!op.consumed && op.pfx === cl.pfx && op.cn === cl.cn && op.lineIdx < cl.lineIdx) {
+        if (!op.consumed && op.tag === cl.tag && op.pfx === cl.pfx && op.cn === cl.cn && op.lineIdx < cl.lineIdx) {
           op.consumed = true;
           cl.consumed = true;
           break;
@@ -621,34 +623,48 @@ function repairMupSpan(body: string): string {
     // v8.68: cn完全一致ならpfx違いでもペアリングしpfxも同期。
     //       H1膜が壊れてopeningがCN化→closingはH1のまま、のようなケースで
     //       renderer側の stack[k].pfx===cpfx 判定が通らずペアレンダリングされない問題を解消。
+    // v8.81: tag letter (m/M) も同期対象に。m[CN=foo] ↔ M[CN=foo] の双方向書換に対応。
     const orphanOpenings = openStack.filter(o => !o.consumed);
     const orphanClosings = closeList.filter(c => !c.consumed);
     const usedCloseIdx = new Set<number>();
     for (const op of orphanOpenings) {
-      // Pass1: pfx一致を優先
+      // Pass1: tag+pfx一致を優先（cn だけが違う定番ケース）
       let matched = false;
       for (const cl of orphanClosings) {
         if (usedCloseIdx.has(cl.lineIdx)) continue;
         if (cl.lineIdx <= op.lineIdx) continue;
-        if (cl.pfx !== op.pfx) continue;
+        if (cl.tag !== op.tag || cl.pfx !== op.pfx) continue;
         usedCloseIdx.add(cl.lineIdx);
         if (op.cn !== cl.cn) {
-          const oldBracket = '[' + cl.pfx + '=' + cl.cn + ']';
-          const newBracket = '[' + op.pfx + '=' + op.cn + ']';
+          const oldBracket = cl.tag + '[' + cl.pfx + '=' + cl.cn + ']';
+          const newBracket = op.tag + '[' + op.pfx + '=' + op.cn + ']';
           nsLines[cl.lineIdx] = nsLines[cl.lineIdx].replace(oldBracket, () => newBracket);
         }
         matched = true;
         break;
       }
       if (matched) continue;
-      // Pass2: cn一致でpfx違いの場合、開き膜のpfxを正として閉じ膜のpfxも同期
+      // Pass2: cn一致で tag/pfx 違いの場合、開き膜の tag/pfx を正として閉じ膜を同期
+      // (m⇄M 切替、CN⇄H1 切替、両方同時切替のすべてをここで吸収)
       for (const cl of orphanClosings) {
         if (usedCloseIdx.has(cl.lineIdx)) continue;
         if (cl.lineIdx <= op.lineIdx) continue;
         if (cl.cn !== op.cn) continue;
         usedCloseIdx.add(cl.lineIdx);
-        const oldBracket = '[' + cl.pfx + '=' + cl.cn + ']';
-        const newBracket = '[' + op.pfx + '=' + op.cn + ']';
+        const oldBracket = cl.tag + '[' + cl.pfx + '=' + cl.cn + ']';
+        const newBracket = op.tag + '[' + op.pfx + '=' + op.cn + ']';
+        nsLines[cl.lineIdx] = nsLines[cl.lineIdx].replace(oldBracket, () => newBracket);
+        matched = true;
+        break;
+      }
+      if (matched) continue;
+      // Pass3: 順序のみでペアリング（中間状態で cn まで変化した場合の救済）
+      for (const cl of orphanClosings) {
+        if (usedCloseIdx.has(cl.lineIdx)) continue;
+        if (cl.lineIdx <= op.lineIdx) continue;
+        usedCloseIdx.add(cl.lineIdx);
+        const oldBracket = cl.tag + '[' + cl.pfx + '=' + cl.cn + ']';
+        const newBracket = op.tag + '[' + op.pfx + '=' + op.cn + ']';
         nsLines[cl.lineIdx] = nsLines[cl.lineIdx].replace(oldBracket, () => newBracket);
         break;
       }
