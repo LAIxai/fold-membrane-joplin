@@ -214,7 +214,7 @@
  *   v8.78 [2026.04.18(土)pm01:10] CN=4481_ITALIC_COMMENT 追加ルール: 先頭孤立 * (膜タグ〜// の間) も除去。v8.77のルールは *…* ペアが揃っている場合のみ動作していたため、WYSIWYGで片割れ * のみ残るケース ($▼m[…]$ * // comment) が取り残されていた。m-suffix / M-prefix 両対応。
  *   v8.79 [2026.04.18(土)pm01:30] 自動修復を全面停止(Cmd+Sトリガのみに)。CN=3417_noteSelectWatcher の送出/受信ノート自動修復、および CN=7538 の switchedToMarkdown 修復ブロックを無効化。ユーザ指示: 書込みなしでのノート切替は普通の操作であり、意図的にCmd+Sを押したときだけ修復するべき。updated_time追跡とCN=9031のNOTE_SWITCH再描画は維持。
  *   v8.80 [2026.04.18(土)pm01:35] WYSIWYG→Markdownモード切替時の修復は復活。ユーザ指示: 通常のLaTeX(マクロ展開等)と同様、モード切替は意図的操作なので修復してよい。ノート切替(CN=3417)の自動修復停止は維持。
- *   v8.81 [2026.04.18(土)pm07:30] CN=6291_NAME_SYNC を「膜タグ全体同期」に拡張。markMup v3.0 不可侵膜(M)の受理: 正規表現 `[mM]` 対応。CN↔H1切替バグを修正(Pass2でtag/pfx/cn全てを開き膜に合わせる)。Pass3追加: cnまで変化した中間状態の救済としてドキュメント順孤立ペアも同期。これにより「開閉膜のどちらを編集しても、tag letter・pfx・cn が全て同期」が実現。mupEditor.js v2.3 と併せてリアルタイム同期も全文ペアリング方式に刷新。
+ *   v8.81 [2026.04.18(土)pm07:30] CN=6291_NAME_SYNC を「膜タグ全体同期」に拡張。markMup v3.0 不可侵膜(M)の受理: 正規表現 `[mM]` 対応。CN↔H1切替バグを修正(Pass2でtag/pfx/cn全てを開き膜に合わせる)。Pass3追加: cnまで変化した中間状態の救済としてドキュメント順孤立ペアも同期。これにより「開閉膜のどちらを編集しても、tag letter・pfx・cn が全て同期」が実現。mupEditor.js v2.3 と併せてリアルタイム同期も全文ペアリング方式に刷新。CN=8276_INLINE_ARROW: tag letter逆引き(m/M保持)+折畳融合矢印対応(FOLDED_FUSED)。折畳状態で開始膜が壊れ<span>▶◀</span>形式になっても閉じ膜から復元可能に。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -413,30 +413,62 @@ function repairMupSpan(body: string): string {
   // TinyMCEはH1/H2/H3/CN膜ヘッダーを以下のようにシリアライズすることがある:
   //   <span style="color:#9b6fc4;">▼</span> new_3245 */ comment* [⊕0+0]
   // (mup-pfx-* クラスが失われ、nameが<span>から出て plain text になるケース)
-  // 閉じ膜 $▲m[(CN|H[1-3])=name]$ を手がかりに pfx を逆引きして復元する。
+  // 閉じ膜 $▲m[…]$ / $▲M[…]$ を手がかりに tag letter と pfx を逆引きして復元する。
+  // v8.81 [2026.04.18(土)pm07:35] tag letter (m/M) も逆引き対象に追加。不可侵膜 M 対応。
   {
     const _iaLines = fixed.split('\n');
-    // 閉じ膜のマップ: cn → {pfx, lineIdx}
-    const _closingByCn = new Map<string, {pfx: string, lineIdx: number}>();
+    // 閉じ膜のマップ: cn → {tag, pfx, lineIdx}
+    const _closingByCn = new Map<string, {tag: string, pfx: string, lineIdx: number}>();
     for (let i = 0; i < _iaLines.length; i++) {
-      const cm = /(?:[▲◀]m|M[▲◀])\[(CN|H[1-3])=([^\]]+)\]/.exec(_iaLines[i]);
-      if (cm) _closingByCn.set(cm[2].trim(), {pfx: cm[1], lineIdx: i});
+      // m-suffix/M-suffix (v2.1/v3.0) と M-prefix (legacy) を両方受理
+      const cmSfx = /(?:[▲◀])([mM])\[(CN|H[1-3])=([^\]]+)\]/.exec(_iaLines[i]);
+      const cmPfx = /M([▲◀])\[(CN|H[1-3])=([^\]]+)\]/.exec(_iaLines[i]);
+      if (cmSfx) {
+        _closingByCn.set(cmSfx[3].trim(), {tag: cmSfx[1], pfx: cmSfx[2], lineIdx: i});
+      } else if (cmPfx) {
+        // legacy M-prefix は標準形 m として扱う（AUTO_CN 等で後段正規化される）
+        _closingByCn.set(cmPfx[3].trim(), {tag: 'm', pfx: cmPfx[2], lineIdx: i});
+      }
     }
     for (let i = 0; i < _iaLines.length; i++) {
       const line = _iaLines[i];
-      // 既に正常な膜タグ行ならスキップ
-      if (/(?:[▼▶▲◀]m|M[▼▶▲◀])\[(?:CN|H[1-3])=/.test(line)) continue;
+      // 既に正常な膜タグ行ならスキップ (m/M両対応)
+      if (/(?:[▼▶▲◀][mM]|M[▼▶▲◀])\[(?:CN|H[1-3])=/.test(line)) continue;
+
+      // \▼[CN=8276_FOLDED_FUSED] // v8.81 折畳状態破損: 両矢印混在型
+      // 折り畳まれた膜の開始膜がTinyMCEで壊されると、開閉両矢印が以下のように混在する:
+      //   (a) 同一spanに融合:   <span style="color:...">▶◀</span> name // comment [⊕2+0]
+      //   (b) 2つの別span に:  <span>▶</span><span>◀</span> name // comment [⊕2+0]
+      //   (c) span+plain矢印:  <span>▶</span>◀ name   /  ▶<span>◀</span> name
+      // 閉じ膜 $◀m[…]$ は別行として残っていることが多いため、cn逆引きで復元可能。
+      // 復元後は折畳状態(▶=horizontal)を維持し、外側から開閉可能にする。
+      const mFused = /^(?:<span[^>]*>[▼▶](?:\s*[▲◀])?<\/span>|[▼▶]<span[^>]*>[▲◀]<\/span>|<span[^>]*>[▼▶]<\/span>\s*(?:<span[^>]*>)?[▲◀](?:<\/span>)?)\s+(\S+)(?:\s+\*\s*(?:\/\/)?\s*([^*\n]*?)\s*\*)?\s*(?:\/\/\s*([^\[\n]*?))?\s*(\[[⊕⊖⊘][^\]\n]*\])?\s*$/.exec(line);
+      if (mFused) {
+        const cn = mFused[1].trim();
+        const comment = (mFused[2] || mFused[3] || '').trim();
+        const badge = mFused[4] || '[⊕0+0]';
+        const cl = _closingByCn.get(cn);
+        const tag = cl ? cl.tag : 'm';
+        const pfx = cl ? cl.pfx : 'H1';
+        const cmt = comment ? ' // ' + comment : ' // comment';
+        // 折畳状態=▶で復元（元々折畳まれていた状態を尊重）
+        _iaLines[i] = '$▶' + tag + '[' + pfx + '=' + cn + ']$' + cmt + ' ' + badge;
+        continue;
+      }
+      // \▲[CN=8276_FOLDED_FUSED]
+
       // pattern: [<span…>]▼[/</span>] space name [… */comment*] [ [⊕…] ]
       const m = /^<span[^>]*>([▼▶])<\/span>\s+(\S+)(?:\s+\*\s*(?:\/\/)?\s*([^*\n]*?)\s*\*)?\s*(\[[⊕⊖⊘][^\]\n]*\])?\s*$/.exec(line);
       if (!m) continue;
       const arrow = m[1]; const cn = m[2].trim();
       const comment = m[3] ? m[3].trim() : '';
       const badge = m[4] || ('[' + (arrow==='▼'?'⊕':'⊖') + '0+0]');
-      // 閉じ膜から pfx を逆引き（なければ H1 をデフォルトに—toolbarボタンのV型と合致）
+      // 閉じ膜から tag/pfx を逆引き（なければデフォルト: tag='m', pfx='H1'）
       const cl = _closingByCn.get(cn);
+      const tag = cl ? cl.tag : 'm';
       const pfx = cl ? cl.pfx : 'H1';
       const cmt = comment ? ' // ' + comment : ' // comment';
-      _iaLines[i] = '$' + arrow + 'm[' + pfx + '=' + cn + ']$' + cmt + ' ' + badge;
+      _iaLines[i] = '$' + arrow + tag + '[' + pfx + '=' + cn + ']$' + cmt + ' ' + badge;
     }
     fixed = _iaLines.join('\n');
   }
