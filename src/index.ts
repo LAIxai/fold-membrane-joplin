@@ -212,6 +212,7 @@
  *   v8.76 [2026.04.18(土)pm00:20] CN=9015: toggleEditors撤去。WYSIWYGのまま修復するため、CN=3417と同じ editor.setText 方式に統一。①TinyMCE書込み待ちポーリング(1秒) → ②repairMupSpan → ③DB書き戻し + editor.setText で現在のエディタをリフレッシュ。ユーザ要望: Cmd+SでWYSIWYGを維持したまま修復したい。
  *   v8.77 [2026.04.18(土)pm00:55] CN=4481_ITALIC_COMMENT 拡張。現行v2.1 m-suffix形式($▼m[...]$) に対応するルール追加。WYSIWYGでコメント編集後Cmd+S修復するとカウンターバッジ直前に * が残る長年の現象を解消。旧ルールはM-prefix形式専用で m-suffix をキャッチできていなかった。孤立 * の保険ルールも追加。
  *   v8.78 [2026.04.18(土)pm01:10] CN=4481_ITALIC_COMMENT 追加ルール: 先頭孤立 * (膜タグ〜// の間) も除去。v8.77のルールは *…* ペアが揃っている場合のみ動作していたため、WYSIWYGで片割れ * のみ残るケース ($▼m[…]$ * // comment) が取り残されていた。m-suffix / M-prefix 両対応。
+ *   v8.79 [2026.04.18(土)pm01:30] 自動修復を全面停止(Cmd+Sトリガのみに)。CN=3417_noteSelectWatcher の送出/受信ノート自動修復、および CN=7538 の switchedToMarkdown 修復ブロックを無効化。ユーザ指示: 書込みなしでのノート切替は普通の操作であり、意図的にCmd+Sを押したときだけ修復するべき。updated_time追跡とCN=9031のNOTE_SWITCH再描画は維持。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -1293,7 +1294,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
       _autoRepairPrevNoteId = nowNoteId;
       if (!switchedToMarkdown && !switchedToWYSIWYG && !noteChangedInWYSIWYG) return;
 
-      if (switchedToMarkdown) {
+      // v8.79 [2026.04.18(土)pm01:30] 自動修復を停止。ユーザ指示によりCmd+Sトリガのみ。
+      // WYSIWYG→Markdownモード切替時の修復もスキップ（CN=9031のノート切替再描画のみ残す）。
+      if (false && switchedToMarkdown) {
         // WYSIWYG→Markdown切替を検出 → CN=6302と同じ修復ロジック
         // 事前フェッチ済みnoteにすでに破壊パターンあり → 即修復（v7.68相当）
         // なければポーリング（TinyMCEのシリアライズDB書込み待ち）
@@ -1405,6 +1408,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
           }).catch(() => {});
         }
 
+        // v8.79 [2026.04.18(土)pm01:30] 自動修復を全面停止。ユーザ指示: ノート切替は書込みなしでの移動が普通であり、
+        // 意図的にCmd+Sを押したときだけ修復する。送出・受信ノートの自動修復処理はスキップしupdated_time追跡だけ維持。
+        return;
+
+        // eslint-disable-next-line no-unreachable
         if (!outgoingId || outgoingId === incomingId) return;
         // CN=9031(toggleEditors往復)と並列実行しない（同時操作でJoplin IPC過負荷防止）
         if (_isAutoRepairing) return;
