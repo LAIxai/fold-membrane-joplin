@@ -211,6 +211,7 @@
  *   v8.75 [2026.04.18(土)am11:55] CN=7815_menu.REPAIR_ACCEL + CN=7816_repairSpan.SYNC_AFTER 新設。Cmd+S に Repair Membranes を割り当て、修復実行後に synchronize も呼ぶ「修復→同期」統合ショートカット。ユーザ指示: ノート切替で自動修復→更新日が動く問題を回避するため手動トリガに移行。マークダウンモードへの切替も不要になる。
  *   v8.76 [2026.04.18(土)pm00:20] CN=9015: toggleEditors撤去。WYSIWYGのまま修復するため、CN=3417と同じ editor.setText 方式に統一。①TinyMCE書込み待ちポーリング(1秒) → ②repairMupSpan → ③DB書き戻し + editor.setText で現在のエディタをリフレッシュ。ユーザ要望: Cmd+SでWYSIWYGを維持したまま修復したい。
  *   v8.77 [2026.04.18(土)pm00:55] CN=4481_ITALIC_COMMENT 拡張。現行v2.1 m-suffix形式($▼m[...]$) に対応するルール追加。WYSIWYGでコメント編集後Cmd+S修復するとカウンターバッジ直前に * が残る長年の現象を解消。旧ルールはM-prefix形式専用で m-suffix をキャッチできていなかった。孤立 * の保険ルールも追加。
+ *   v8.78 [2026.04.18(土)pm01:10] CN=4481_ITALIC_COMMENT 追加ルール: 先頭孤立 * (膜タグ〜// の間) も除去。v8.77のルールは *…* ペアが揃っている場合のみ動作していたため、WYSIWYGで片割れ * のみ残るケース ($▼m[…]$ * // comment) が取り残されていた。m-suffix / M-prefix 両対応。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -576,6 +577,11 @@ function repairMupSpan(body: string): string {
   fixed = fixed.replace(/(\$?[▼▶]m\[[^\]\n]+\]\$?)[ \t]+\*[ \t]*(\/\/[^*\n]*?)[ \t]*\*/g, '$1 $2');
   // さらに保険: コメント末尾〜バッジ直前の孤立 * を除去（片方だけ残るケース）
   fixed = fixed.replace(/(\/\/[^*\n]*?)[ \t]*\*[ \t]*(\[[⊕⊖⊘])/g, '$1 $2');
+  // v8.78 [2026.04.18(土)pm01:10] 孤立先頭 * (膜タグ〜// の間) を除去。
+  //   WYSIWYGでアスタリスク片割れが残ったまま // の直前に * が居座るケース用。
+  //   例: $▼m[H1=xxx]$ *// comment → $▼m[H1=xxx]$ // comment
+  fixed = fixed.replace(/(\$?[▼▶]m\[[^\]\n]+\]\$?)[ \t]+\*+[ \t]*(\/\/)/g, '$1 $2');
+  fixed = fixed.replace(/(M[▼▶]\[[^\]\n]+\])[ \t]+\*+[ \t]*(\/\/)/g, '$1 $2');
   // \▲[CN=4481_repairMupSpan.ITALIC_COMMENT]
 
   // \▼[CN=6291_repairMupSpan.NAME_SYNC] // WYSIWYG編集後の開閉膜名不一致修正
