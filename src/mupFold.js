@@ -1,5 +1,10 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v7.7
+// \▼[CN=FOLD] // Fold Membrane - click handler v7.8
 // ─── changelog ───────────────────────────────────────
+// v7.8  2026.04.19(日) 「🔧 ブロックコードに戻す」メニュー追加: 膜ボタン(v8.62)の逆操作。
+//                      選択中の膜のCN/pfx/occurrenceIndexをmupUnwrapToCodeでindex.tsに送信。
+//                      index.tsがnote.body中の該当膜を```…```で包んで書き戻す。
+//                      → WYSIWYGでLaTeX数式のダブルクリック編集と同じ感覚で膜名/CN/コメントを編集可能。
+//                      編集後Cmd+S(Repair Membranes)→CN=3094_CODEFENCE_UNWRAPが膜に復元。
 // v7.1  2026.04.12(日) クラス名バグ修正: mup-body→mup-bd（実際のクラス名）
 //                      v7.0まで_getBody()が常にnull返却 → keydownがsetStartAfter(mup)→膜外に飛ぶ
 //                      →「フッタを飛び越える」謎の根本原因。mup-bdに修正で全て解決するはず。
@@ -649,7 +654,28 @@ function _findNearestVisibleMup() {
     var text = (clone.innerText || clone.textContent || '').trim();
     navigator.clipboard.writeText(text).catch(function(){});
   });
-  // ③ 膜の中へ移動（WYSIWYGのみ・ヘッダー/フッターemにカーソルがある時表示）
+  // ③ 🔧 ブロックコードに戻す — 膜ボタン(v8.62)の逆操作
+  //    この膜を ```…``` で包んで書き戻し、TinyMCEに「コードブロック」として表示させる。
+  //    WYSIWYGでLaTeX数式(ダブルクリック→編集→離脱で再レンダ)と同じ感覚で
+  //    膜の名前/CN/コメントを編集できるようにする。
+  //    編集後Cmd+S→CN=3094_CODEFENCE_UNWRAPが自動的に膜形式へ戻す。
+  _addSep();
+  _addItem('🔧 ブロックコードに戻す', function() {
+    if (!_ctxMup) return;
+    var cn  = _ctxMup.getAttribute('data-mup-cn');
+    var pfx = _ctxMup.getAttribute('data-mup-pfx') || 'CN';
+    if (!cn) return;
+    // 同名膜が複数あるとき、ドキュメント順で何番目かを特定（0始まり）
+    var all = document.querySelectorAll('.mup[data-mup-cn="'+cn+'"][data-mup-pfx="'+pfx+'"]');
+    var occIdx = Array.prototype.indexOf.call(all, _ctxMup);
+    webviewApi.postMessage('markMupRenderer', {
+      type: 'mupUnwrapToCode',
+      cn:   cn,
+      pfx:  pfx,
+      occurrenceIndex: occIdx >= 0 ? occIdx : 0
+    });
+  });
+  // ④ 膜の中へ移動（WYSIWYGのみ・ヘッダー/フッターemにカーソルがある時表示）
   //    ヘッダーem → body先頭へ。フッターem → body末尾へ。
   var _itemJumpInside = null;
   if (_isWYSIWYG) {

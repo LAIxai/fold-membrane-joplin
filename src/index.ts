@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.77
- * @date    2026.04.18(土)pm00:55
+ * @version 8.85
+ * @date    2026.04.19(日)pm05:30
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -218,6 +218,7 @@
  *   v8.82 [2026.04.19(日)pm00:30] CN=3714_TAGLINE_RESIDUE 新設。TinyMCE段落結合で膜タグ行末尾に <span style=...> 残骸が付着する破損を救済。タグ行直後に `<span...>text</span>` が含まれる場合、spanタグを剥いで純テキスト化し、次行に分離する。膜#1の本文が膜#2タグ行末尾に混入する「成済まし」破損パターンを修復。INLINE_ARROW直後・NAME_SYNC前に実行。
  *   v8.83 [2026.04.19(日)pm01:00] CN=3714_TAGLINE_RESIDUE 解析復元に改良。span剥ぎ+LaTeX復号後、末尾 [⊕X+Y]を #2 の本来のバッジとして救出し、`// comment` があればコメント復元、それ以前のゴミ(前膜本文残骸の「あ」等)は破棄。次行への押し出しを廃止し、#2 タグ行を綺麗に再構築する。
  *   v8.84 [2026.04.19(日)pm01:15] 3連対策。(1)CN=3715_COMMENT_JOIN: 分割コメント連結。タグ行末 `*?//` 停止 + 次行にバッジ付きコメント本文 → 1行に戻す。(2)CN=3716_BADGE_UNESCAPE: `\[⊕X+Y\]` の逆エスケープ正規化。Cmd+S往復で倍増する backslash 残骸を全域で `[⊕X+Y]` に戻す。(3)CN=4481拡張: `// *comment** [badge]` / `// *comment*` の包み `*` を除去。分割連結直後の二重アスタリスクにも対応。
+ *   v8.85 [2026.04.19(日)pm05:30] CN=8215_UNWRAP_TO_CODE 新設。膜ボタン(v8.62)の逆操作として「🔧 ブロックコードに戻す」をmupFold.js v7.8コンテキストメニューに追加。選択膜をcn+pfx+occurrenceIndexで特定し note.body 中で ```…``` に包んでDB書戻し+editor.setTextで即時反映。TinyMCEが「コードブロック」として描画するので、WYSIWYGのままダブルクリックで膜名/CN/コメントを編集可能。離脱後Cmd+SでCN=3094_CODEFENCE_UNWRAPが自動的に膜形式へ復元する「ラウンドトリップ編集」。ユーザ指示: LaTeX数式のダブルクリック編集と同じ感覚でWYSIWYGだけで膜修正を完結したい。同名入れ子膜にもdepth追跡で正確対応。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -240,12 +241,13 @@
 //   \▼[CN=3518_editorScript] // CodeMirrorプラグイン登録
 //   \▼[CN=7201_modeCheck] // mupCheckMode応答受信  ⇒ Me ⇒ {2847_isMarkdownMode}
 //   \▼[CN=6174_hasDmg] // 破損パターン検出ユーティリティ  {7538,3417} ⇒ Me
-//   \▼[CN=4896_onMessage] // mupToggle/mupToggleEditorメッセージ受信  ⇒ Me ⇒ {5139,8347,2091,5763,9412}
+//   \▼[CN=4896_onMessage] // mupToggle/mupToggleEditorメッセージ受信  ⇒ Me ⇒ {5139,8347,2091,5763,9412,8215}
 //     \▼[CN=5139_onMessage.TOGGLE_EDITOR] // 🔖エディタ切替＋自動復旧  {4896,4471} ⇒ Me ⇒ {9043,2847}
 //     \▼[CN=8347_onMessage.PROBE] // Markdown/WYSIWYGモード判定
 //     \▼[CN=2091_onMessage.REGEX] // 開始膜行のバッジを置換
 //     \▼[CN=5763_onMessage.PUT] // DBへ書き戻し
 //     \▼[CN=9412_onMessage.EDITOR] // CM6エディタ左ペインを同期
+//     \▼[CN=8215_onMessage.UNWRAP_TO_CODE] // 膜を```で包む（膜ボタン逆操作）  ⇒ Me ⇒ {3094}
 //   \▼[CN=2847_isMarkdownMode] // エディタモード判定ユーティリティ  {5139,7538,7125,7201} ⇒ Me
 //   \▼[CN=7538_modeWatcher.AUTOREPAIR] // モード変化監視: 双方向遷移検出→自動修復  ⇒ Me ⇒ {9043,2847,6174}
 //     \▼[CN=1647_modeWatcher.HR_RESTORE] // [無効化] Markdown→WYSIWYG: HR自動変換
@@ -1213,6 +1215,71 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
         return;
       }
       // \▲[CN=4723_onMessage.SET_ACTIVE]
+
+      // \▼[CN=8215_onMessage.UNWRAP_TO_CODE] // 膜をコードフェンスで包む（膜ボタンの逆操作）
+      // mupFold.jsのコンテキストメニュー「🔧 ブロックコードに戻す」から呼ばれる。
+      // note.body中で対象膜(cn+pfx+occurrenceIndex)の範囲を特定し、```…``` で包む。
+      // → TinyMCEが「コードブロック」として描画し、WYSIWYGのままダブルクリックで編集可能に。
+      // 編集後Cmd+S(Repair Membranes) → CN=3094_CODEFENCE_UNWRAP が膜形式に復元。
+      // 目的: LaTeX数式と同じ感覚で膜の名前/CN/コメントをWYSIWYGだけで編集完結させる。
+      if (msg.type === 'mupUnwrapToCode') {
+        const cn  = String(msg.cn || '');
+        const pfx = String(msg.pfx || 'CN');
+        const occurrenceIndex = typeof msg.occurrenceIndex === 'number' ? msg.occurrenceIndex : 0;
+        if (!cn) return;
+        const note = await joplin.workspace.selectedNote();
+        if (!note?.body) return;
+        const escapedCn = cn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // 固有値(4桁_)がないCNはrepairが先行して付加済みの可能性に備えてオプション前置
+        const cnPat = /^\d{4}/.test(cn) ? escapedCn : '(?:\\d{4}_)?' + escapedCn;
+        // v2.1 m-suffix / 旧M-prefix / _M 三形式＋$ラップ任意に対応
+        const openRe  = new RegExp(
+          '^[ \\t]*\\$?(?:[▼▶]m|M[▼▶]|[▼▶]_M)\\[' + pfx + '=' + cnPat + '\\]\\$?'
+        );
+        const closeRe = new RegExp(
+          '^[ \\t]*\\$?(?:[▲◀]m|M[▲◀]|[▲◀]_M)\\[' + pfx + '=' + cnPat + '\\]\\$?'
+        );
+        const lines = note.body.split('\n');
+        // occurrenceIndex 番目の開き膜を探す
+        let openIdx = -1;
+        let seen = 0;
+        for (let i = 0; i < lines.length; i++) {
+          if (openRe.test(lines[i])) {
+            if (seen === occurrenceIndex) { openIdx = i; break; }
+            seen++;
+          }
+        }
+        if (openIdx < 0) return;
+        // 対応する閉じ膜を探す（同名入れ子に対応: depth追跡）
+        let closeIdx = -1;
+        let depth = 1;
+        for (let j = openIdx + 1; j < lines.length; j++) {
+          if (openRe.test(lines[j])) depth++;
+          else if (closeRe.test(lines[j])) {
+            depth--;
+            if (depth === 0) { closeIdx = j; break; }
+          }
+        }
+        if (closeIdx < 0) return;
+        // 冪等性: すでに ``` 直前直後で囲まれている場合は何もしない
+        const prev = openIdx > 0 ? lines[openIdx - 1] : '';
+        const next = closeIdx < lines.length - 1 ? lines[closeIdx + 1] : '';
+        if (/^```[^\n]*$/.test(prev.trim()) && /^```[ \t]*$/.test(next.trim())) return;
+        // 膜本体を ```\n…\n``` で包む
+        const before   = lines.slice(0, openIdx);
+        const membrane = lines.slice(openIdx, closeIdx + 1);
+        const after    = lines.slice(closeIdx + 1);
+        const newBody  = [...before, '```', ...membrane, '```', ...after].join('\n');
+        if (newBody === note.body) return;
+        // 成済まし防止: 書込み直前にノートID再確認
+        const _still = await joplin.workspace.selectedNote();
+        if (_still?.id !== note.id) return;
+        await joplin.data.put(['notes', note.id], null, { body: newBody });
+        // エディタを即時リフレッシュ（Markdown/WYSIWYG両対応: CN=9015と同じ方式）
+        try { await joplin.commands.execute('editor.setText', newBody); } catch(_e) {}
+        return;
+      }
+      // \▲[CN=8215_onMessage.UNWRAP_TO_CODE]
 
       // \▼[CN=4731_onMessage.TOC] // 膜目次パネル: トグル / データ更新 / クリック結果返却
       if (msg.type === 'mupToggleToc') {
