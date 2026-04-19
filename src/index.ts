@@ -217,6 +217,7 @@
  *   v8.81 [2026.04.18(土)pm07:30] CN=6291_NAME_SYNC を「膜タグ全体同期」に拡張。markMup v3.0 不可侵膜(M)の受理: 正規表現 `[mM]` 対応。CN↔H1切替バグを修正(Pass2でtag/pfx/cn全てを開き膜に合わせる)。Pass3追加: cnまで変化した中間状態の救済としてドキュメント順孤立ペアも同期。これにより「開閉膜のどちらを編集しても、tag letter・pfx・cn が全て同期」が実現。mupEditor.js v2.3 と併せてリアルタイム同期も全文ペアリング方式に刷新。CN=8276_INLINE_ARROW: tag letter逆引き(m/M保持)+折畳融合矢印対応(FOLDED_FUSED)。折畳状態で開始膜が壊れ<span>▶◀</span>形式になっても閉じ膜から復元可能に。
  *   v8.82 [2026.04.19(日)pm00:30] CN=3714_TAGLINE_RESIDUE 新設。TinyMCE段落結合で膜タグ行末尾に <span style=...> 残骸が付着する破損を救済。タグ行直後に `<span...>text</span>` が含まれる場合、spanタグを剥いで純テキスト化し、次行に分離する。膜#1の本文が膜#2タグ行末尾に混入する「成済まし」破損パターンを修復。INLINE_ARROW直後・NAME_SYNC前に実行。
  *   v8.83 [2026.04.19(日)pm01:00] CN=3714_TAGLINE_RESIDUE 解析復元に改良。span剥ぎ+LaTeX復号後、末尾 [⊕X+Y]を #2 の本来のバッジとして救出し、`// comment` があればコメント復元、それ以前のゴミ(前膜本文残骸の「あ」等)は破棄。次行への押し出しを廃止し、#2 タグ行を綺麗に再構築する。
+ *   v8.84 [2026.04.19(日)pm01:15] 3連対策。(1)CN=3715_COMMENT_JOIN: 分割コメント連結。タグ行末 `*?//` 停止 + 次行にバッジ付きコメント本文 → 1行に戻す。(2)CN=3716_BADGE_UNESCAPE: `\[⊕X+Y\]` の逆エスケープ正規化。Cmd+S往復で倍増する backslash 残骸を全域で `[⊕X+Y]` に戻す。(3)CN=4481拡張: `// *comment** [badge]` / `// *comment*` の包み `*` を除去。分割連結直後の二重アスタリスクにも対応。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -476,6 +477,44 @@ function repairMupSpan(body: string): string {
   }
   // \▲[CN=8276_repairMupSpan.INLINE_ARROW]
 
+  // \▼[CN=3715_repairMupSpan.COMMENT_JOIN] // v8.84 分割コメントの連結復元
+  // TinyMCEが膜コメントを <em>…</em> で包んだまま改行を含むと、シリアライズで:
+  //   $▼m[CN=name]$ *//        ← タグ行末が *// で停止
+  //   *comment** [⊕2+0]        ← 次行にコメント本文 + 末尾バッジ
+  // のように分割される。タグ行末が `*?//` で終わり、次行がタグでなく末尾にバッジを
+  // 含む場合、次行を連結してタグ行を1行に戻す。
+  {
+    const _cjLines = fixed.split('\n');
+    const _cjOut: string[] = [];
+    const RE_TAG_LINE = /^([ \t]*\$?[▼▶▲◀][mM]\[[^\]\n]+\]\$?)(.*)$/;
+    const RE_BADGE = /\[[⊕⊖⊘][^\]\n]*\]\s*$/;
+    for (let i = 0; i < _cjLines.length; i++) {
+      const line = _cjLines[i];
+      const m = RE_TAG_LINE.exec(line);
+      if (!m) { _cjOut.push(line); continue; }
+      const tail = m[2];
+      // タグ行末が `*?//` で終わる（コメント開始直後で切れている）
+      if (!/\*?\s*\/\/\s*$/.test(tail)) { _cjOut.push(line); continue; }
+      // 次行がタグ行ではなく、末尾にバッジを含む（コメント継続行の特徴）
+      if (i + 1 >= _cjLines.length) { _cjOut.push(line); continue; }
+      const nxt = _cjLines[i + 1];
+      if (RE_TAG_LINE.test(nxt)) { _cjOut.push(line); continue; }
+      if (!RE_BADGE.test(nxt)) { _cjOut.push(line); continue; }
+      // 連結: タグ行の `*?//` を `//` に正規化し、次行の内容を結合
+      const joinedTail = tail.replace(/\*?\s*\/\/\s*$/, '// ') + nxt.trim();
+      _cjOut.push(m[1] + ' ' + joinedTail.replace(/^\s*/, ''));
+      i++; // 次行は消費
+    }
+    fixed = _cjOut.join('\n');
+  }
+  // \▲[CN=3715_repairMupSpan.COMMENT_JOIN]
+
+  // \▼[CN=3716_repairMupSpan.BADGE_UNESCAPE] // v8.84 バッジのbackslashエスケープ解除
+  // Joplin MD書き出しで [⊕X+Y] が \[⊕X+Y\] にエスケープされると、往復で倍増する。
+  // タグ行以外も含め全域で正規化（バッジは膜関連のみに出現する特殊パターン）。
+  fixed = fixed.replace(/\\+\[([⊕⊖⊘][^\]\n]*)\\+\]/g, '[$1]');
+  // \▲[CN=3716_repairMupSpan.BADGE_UNESCAPE]
+
   // \▼[CN=3714_repairMupSpan.TAGLINE_RESIDUE] // v8.83 タグ行末尾の<span>残骸を解析復元
   // TinyMCE段落結合で、前膜の本文や残骸spanが次膜のタグ行末尾にくっつくことがある:
   //   $▶m[H1=new_3221]$ <span style="color:rgb(50,55,63);">あ</span><span>\(⊕0+0\)</span>
@@ -666,6 +705,11 @@ function repairMupSpan(body: string): string {
   //   例: $▼m[H1=xxx]$ *// comment → $▼m[H1=xxx]$ // comment
   fixed = fixed.replace(/(\$?[▼▶]m\[[^\]\n]+\]\$?)[ \t]+\*+[ \t]*(\/\/)/g, '$1 $2');
   fixed = fixed.replace(/(M[▼▶]\[[^\]\n]+\])[ \t]+\*+[ \t]*(\/\/)/g, '$1 $2');
+  // v8.84 [2026.04.19(日)pm01:15] コメント本文を包む *…** / *…* の除去。
+  //   連結直後の `// *comment** [⊕N+N]` や `// *comment* [⊕N+N]` を `// comment [⊕N+N]` に正規化。
+  fixed = fixed.replace(/(\/\/)\s*\*+([^*\n\[]*?)\*+\s*(\[[⊕⊖⊘])/g, '$1 $2 $3');
+  // さらに: `// *comment**` 単独（バッジなし）も剥ぐ
+  fixed = fixed.replace(/(\/\/)\s*\*+([^*\n\[]*?)\*+\s*$/gm, '$1 $2');
   // \▲[CN=4481_repairMupSpan.ITALIC_COMMENT]
 
   // \▼[CN=6291_repairMupSpan.NAME_SYNC] // WYSIWYG編集後の開閉膜タグ全体同期
