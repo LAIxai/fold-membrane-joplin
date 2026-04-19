@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.89
- * @date    2026.04.19(日)pm11:25
+ * @version 8.90
+ * @date    2026.04.19(日)pm11:55
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -223,6 +223,7 @@
  *   v8.87 [2026.04.19(日)pm10:40] CN=7318 重複バッジ対応。v6.6以前が [⊖f0+0] を理解できずCN=8153が [⊕0+0] を追記した残骸で `[⊖f0+0] [⊕0+0]` のように2バッジ並ぶソースが存在。set時に全バッジを除去→先頭のcount/exp継承→末尾に新バッジ1個だけ再付与することでクリーンアップ。併せて markdownItRenderer v6.8 の prefer-first パーサと対を成し、D案ボタンのハイライトが現在状態と正しく一致するようにする(v0.9.140 常に⊕がハイライトされるバグ修正)。
  *   v8.88 [2026.04.19(日)pm10:55] CN=5128_SET_PFX 新設。mupFold.js v7.11 のプレフィックスインラインボタン行(種類: [CN][H1][H2][H3])から呼ばれる。開き膜の [OLDPFX=cn] と対応する閉じ膜の両方を depth追跡で特定し [NEWPFX=cn] に置換(cn名は保持)。バリデーション: oldPfx/newPfx ともに /^(?:CN|H[1-3])$/ のホワイトリスト。バッジ状態切替と同じ「1クリックで切替・現在値ハイライト」のUX。これで膜の名前・バッジ状態・プレフィックス全てがWYSIWYGから編集可能になりマークダウンモードの出番がほぼ消失。
  *   v8.89 [2026.04.19(日)pm11:25] CN=6392_SET_NAME 新設。mupFold.js v7.13 のName入力行(Enterで確定)から呼ばれる。開き膜と対応閉じ膜の両方で [pfx=oldName] → [pfx=newName] に置換。pfxホワイトリスト + newNameの[] $ 改行禁止バリデーション。replace時の$1/$2混入を防ぐため newName の $ を $$ にエスケープ。これで膜の名前編集もモード切替なしでWYSIWYGから可能に。
+ *   v8.90 [2026.04.19(日)pm11:55] CN=2947_SET_MTYPE 新設。mupFold.js v7.15 の m/M ボタンから呼ばれる。開き膜 ▼m[...]⇄M▼[...] / 閉じ膜 ▲m[...]⇄M▲[...] で形式を切替え、_M(legacy)形式も canonical な m/M に正規化する。markdownItRenderer v6.9 で data-mup-mtype 属性を出力し、mupFold.js が直接参照。M(不可侵膜)の実挙動(編集抑制)は別課題。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -1450,6 +1451,60 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
         return;
       }
       // \▲[CN=6392_onMessage.SET_NAME]
+
+      // \▼[CN=2947_onMessage.SET_MTYPE] // 膜形式切替 m ⇄ M (不可侵膜)
+      // mupFold.js v7.15 の m/M ボタンから呼ばれる。
+      // 開き膜: ▼m[...] ⇄ M▼[...]  /  閉じ膜: ▲m[...] ⇄ M▲[...]
+      // _M(legacy)形式は m に正規化してから M へ遷移（元に戻すときは m 形式になる＝legacy解消）。
+      if (msg.type === 'mupSetMType') {
+        const cn       = String(msg.cn || '');
+        const pfx      = String(msg.pfx || 'CN');
+        const newMType = String(msg.newMType || '');
+        const occurrenceIndex = typeof msg.occurrenceIndex === 'number' ? msg.occurrenceIndex : 0;
+        if (!cn) return;
+        if (!/^(?:CN|H[1-3])$/.test(pfx)) return;
+        if (newMType !== 'm' && newMType !== 'M') return;
+        const note = await joplin.workspace.selectedNote();
+        if (!note?.body) return;
+        const escapedCn = cn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const cnPat = /^\d{4}/.test(cn) ? escapedCn : '(?:\\d{4}_)?' + escapedCn;
+        // 全形式を受け入れる open/close 正規表現（キャプチャ: 1=leading, 2=arrow, 3=[pfx=cn], 4=trailing）
+        const openRe  = new RegExp('^([ \\t]*\\$?)(?:([▼▶])m|[Mm🄼]([▼▶])|([▼▶])_[Mm🄼])(\\[' + pfx + '=' + cnPat + '\\]\\$?)(.*)$');
+        const closeRe = new RegExp('^([ \\t]*\\$?)(?:([▲◀])m|[Mm🄼]([▲◀])|([▲◀])_[Mm🄼])(\\[' + pfx + '=' + cnPat + '\\]\\$?)(.*)$');
+        const lines = note.body.split('\n');
+        let openIdx = -1, seen = 0;
+        for (let i = 0; i < lines.length; i++) {
+          if (openRe.test(lines[i])) {
+            if (seen === occurrenceIndex) { openIdx = i; break; }
+            seen++;
+          }
+        }
+        if (openIdx < 0) return;
+        let depth = 1, closeIdx = -1;
+        for (let i = openIdx + 1; i < lines.length; i++) {
+          if (openRe.test(lines[i])) depth++;
+          else if (closeRe.test(lines[i])) { depth--; if (depth === 0) { closeIdx = i; break; } }
+        }
+        if (closeIdx < 0) return;
+        // 置換ヘルパー: 矢印を抽出して新形式に組み立て直す
+        const rewrite = (line: string, re: RegExp) => {
+          return line.replace(re, (_m: string, lead: string, a1: string, a2: string, a3: string, body: string, trail: string) => {
+            const arrow = a1 || a2 || a3 || '';
+            const prefix = (newMType === 'M') ? ('M' + arrow) : (arrow + 'm');
+            return lead + prefix + body + trail;
+          });
+        };
+        lines[openIdx]  = rewrite(lines[openIdx],  openRe);
+        lines[closeIdx] = rewrite(lines[closeIdx], closeRe);
+        const newBody = lines.join('\n');
+        if (newBody === note.body) return;
+        const _still = await joplin.workspace.selectedNote();
+        if (_still?.id !== note.id) return;
+        await joplin.data.put(['notes', note.id], null, { body: newBody });
+        try { await joplin.commands.execute('editor.setText', newBody); } catch(_e) {}
+        return;
+      }
+      // \▲[CN=2947_onMessage.SET_MTYPE]
 
       // \▼[CN=4731_onMessage.TOC] // 膜目次パネル: トグル / データ更新 / クリック結果返却
       if (msg.type === 'mupToggleToc') {

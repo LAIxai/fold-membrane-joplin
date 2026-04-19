@@ -1,5 +1,10 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v7.14
+// \▼[CN=FOLD] // Fold Membrane - click handler v7.15
 // ─── changelog ───────────────────────────────────────
+// v7.15 2026.04.19(日)pm11:55 m/M 膜形式切替ボタンを Type行 左端に追加。
+//                      ホバーで説明ポップアップ(m: normal / M: inviolable (not yet implemented))。
+//                      クリックで m⇄M トグル→mupSetMType送信(index.ts CN=2947)。
+//                      現在 M は紫(#7a6ad4)でハイライト、m は通常表示。
+//                      _M(legacy)は m 表示扱いでMへ遷移可能。
 // v7.14 2026.04.19(日)pm11:30 ラベル微調整: "Recompile to CodeBlock" → "Convert to code block"
 // v7.13 2026.04.19(日)pm11:25 「Name:」テキスト入力行を追加。
 //                      Enterで確定→mupSetName送信(index.ts CN=6392)、Escapeは既存ハンドラで
@@ -659,6 +664,10 @@ function _findNearestVisibleMup() {
     if (typeof _updateNameInput === 'function') {
       try { _updateNameInput(mupEl); } catch(_e) {}
     }
+    // v7.15: m/M ボタン表示を現在値に同期
+    if (typeof _updateMTypeBtn === 'function') {
+      try { _updateMTypeBtn(mupEl); } catch(_e) {}
+    }
     _menu.style.display = 'block';
     var mx = Math.min(x, window.innerWidth  - _menu.offsetWidth  - 8);
     var my = Math.min(y, window.innerHeight - _menu.offsetHeight - 8);
@@ -854,7 +863,68 @@ function _findNearestVisibleMup() {
   //     メッセージ: mupSetPfx → index.ts CN=5128_SET_PFX が処理。
   //     v7.12: 表示順を Type→Badge に変更（Typeが上）。separator共用のためここではsepを追加しない。
   var _pfxRow = document.createElement('div');
-  _pfxRow.style.cssText = 'display:flex;padding:5px 14px 5px 18px;gap:4px;align-items:center;';
+  _pfxRow.style.cssText = 'display:flex;padding:5px 14px 5px 18px;gap:4px;align-items:center;position:relative;';
+
+  // ④-1a m/M 膜形式切替ボタン（v7.15）: Type行の左端。ホバーで説明ポップアップ。
+  //       m = normal membrane / M = inviolable membrane (not yet implemented)
+  //       クリックで m ⇄ M 切替。_M(legacy)の場合は m として扱い→クリックでMへ。
+  var _mTypeBtn = document.createElement('div');
+  _mTypeBtn.setAttribute('data-mtype-btn', '1');
+  _mTypeBtn.style.cssText = [
+    'padding:3px 9px','border:1px solid #ccc','border-radius:3px',
+    'cursor:pointer','font-size:12px','background:#fafafa','color:#333',
+    'user-select:none','min-width:22px','text-align:center','font-family:monospace',
+    'margin-right:4px'
+  ].join(';');
+  _mTypeBtn.textContent = 'm';
+  // 説明ポップアップ（tooltip）
+  var _mTypePop = document.createElement('div');
+  _mTypePop.style.cssText = [
+    'position:absolute','top:100%','left:10px','margin-top:4px',
+    'background:#fff','border:1px solid #ccc','border-radius:4px',
+    'box-shadow:0 2px 8px rgba(0,0,0,0.15)','padding:6px 10px',
+    'font-size:11px','color:#333','white-space:nowrap','z-index:10001',
+    'display:none','pointer-events:none'
+  ].join(';');
+  _mTypePop.innerHTML =
+    '<div><b>m</b>: normal membrane</div>' +
+    '<div><b>M</b>: inviolable membrane <span style="color:#999">(not yet implemented)</span></div>';
+  _pfxRow.appendChild(_mTypePop);
+  _mTypeBtn.onmouseenter = function() {
+    if (_mTypeBtn.getAttribute('data-active') !== '1') {
+      _mTypeBtn.style.background = '#e8f0fe'; _mTypeBtn.style.color = '#1a73e8';
+    }
+    _mTypePop.style.display = 'block';
+  };
+  _mTypeBtn.onmouseleave = function() {
+    if (_mTypeBtn.getAttribute('data-active') !== '1') {
+      _mTypeBtn.style.background = '#fafafa'; _mTypeBtn.style.color = '#333';
+    }
+    _mTypePop.style.display = 'none';
+  };
+  _mTypeBtn.onmousedown = function(e) { e.preventDefault(); };
+  _mTypeBtn.onclick = function() {
+    if (!_ctxMup) { _hide(); return; }
+    var cn    = _ctxMup.getAttribute('data-mup-cn');
+    var pfx   = _ctxMup.getAttribute('data-mup-pfx') || 'CN';
+    var cur   = _ctxMup.getAttribute('data-mup-mtype') || 'm';
+    // m/_M → M / M → m の単純トグル
+    var newMType = (cur === 'M') ? 'm' : 'M';
+    _hide();
+    if (!cn) return;
+    var all = document.querySelectorAll('.mup[data-mup-cn="'+cn+'"][data-mup-pfx="'+pfx+'"]');
+    var occIdx = Array.prototype.indexOf.call(all, _ctxMup);
+    webviewApi.postMessage('markMupRenderer', {
+      type: 'mupSetMType',
+      cn:       cn,
+      pfx:      pfx,
+      oldMType: cur,
+      newMType: newMType,
+      occurrenceIndex: occIdx >= 0 ? occIdx : 0
+    });
+  };
+  _pfxRow.appendChild(_mTypeBtn);
+
   var _pfxLabel = document.createElement('span');
   _pfxLabel.textContent = 'Type:';
   _pfxLabel.style.cssText = 'color:#666;font-size:12px;margin-right:6px;user-select:none;';
@@ -909,6 +979,24 @@ function _findNearestVisibleMup() {
   function _currentPfx(mupEl) {
     if (!mupEl) return null;
     return mupEl.getAttribute('data-mup-pfx') || null;
+  }
+  // v7.15: m/M ボタンの表示を現在の mtype に同期
+  function _updateMTypeBtn(mupEl) {
+    if (!mupEl) { _mTypeBtn.textContent = 'm'; return; }
+    var cur = mupEl.getAttribute('data-mup-mtype') || 'm';
+    // _M legacy も 'm' 表示扱い（クリックで M に遷移）
+    _mTypeBtn.textContent = (cur === 'M') ? 'M' : 'm';
+    if (cur === 'M') {
+      _mTypeBtn.setAttribute('data-active', '1');
+      _mTypeBtn.style.background   = '#7a6ad4';  // 紫 = inviolable
+      _mTypeBtn.style.color        = '#fff';
+      _mTypeBtn.style.borderColor  = '#7a6ad4';
+    } else {
+      _mTypeBtn.removeAttribute('data-active');
+      _mTypeBtn.style.background   = '#fafafa';
+      _mTypeBtn.style.color        = '#333';
+      _mTypeBtn.style.borderColor  = '#ccc';
+    }
   }
   function _updatePfxHighlight(mupEl) {
     var cur = _currentPfx(mupEl);

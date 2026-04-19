@@ -1,8 +1,12 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 6.8
- * @date    2026.04.19(日)pm10:35
+ * @version 6.9
+ * @date    2026.04.19(日)pm11:55
+ * @desc    v6.9 [2026.04.19(日)pm11:55]: 膜形式(mtype)検出＋DOM公開。
+ *                RE_O capture(1)がm-suffix, (3)がM-prefix, (2)が_M legacy。
+ *                b.mtype として保持し <div class="mup" data-mup-mtype="m|M|_M"> に出力。
+ *                mupFold.js v7.15 のm/M切替ボタンから参照する。
  * @desc    v6.8 [2026.04.19(日)pm10:35]: 重複バッジ耐性。parseStatus が行内の全バッジ
  *                ([⊕/⊖/⊘f? N+M])を抽出し、先頭を status として採用、残り全てをコメント
  *                から除去する。v6.6以前に[⊖f0+0]を理解できずCN=8153が[⊕0+0]を追加した
@@ -127,7 +131,9 @@ function parseMembranes(lines){
       var _si=_aft.indexOf('//');
       var _bfSl=_si>=0?_aft.slice(0,_si):_aft;
       var isActive=_bfSl.indexOf('🟢')>=0;
-      var b={sym:om[1]||om[2]||om[3],pfx:pfx,cn:cn,startLine:i,endLine:-1,depth:stack.length,
+      // v6.9: 膜形式(mtype) 判定。om[1]=m-suffix / om[2]=legacy_M / om[3]=M-prefix
+      var mtype=om[1]?'m':(om[3]?'M':'_M');
+      var b={sym:om[1]||om[2]||om[3],mtype:mtype,pfx:pfx,cn:cn,startLine:i,endLine:-1,depth:stack.length,
              comment:parsed.comment,status:parsed.status,active:isActive};
       stack.push(b);blocks.push(b);
     } else if(cm){
@@ -221,7 +227,7 @@ function buildMupHtmlMap(blocks, lines){
     if(hm){
       var lv=parseInt(hm[1]);
       var hfs=lv<=1?'1.5em':lv===2?'1.25em':'1.1em';
-      openHtml='<div class="mup" data-mup-sym="'+escH(isV?'v':'h')+'" data-mup-pfx="'+escH(b.pfx)+'" data-mup-cn="'+escH(cn)+'"'
+      openHtml='<div class="mup" data-mup-sym="'+escH(isV?'v':'h')+'" data-mup-pfx="'+escH(b.pfx)+'" data-mup-cn="'+escH(cn)+'" data-mup-mtype="'+escH(b.mtype||'m')+'"'
         +(isLocked?' data-mup-locked="true"':'')+(b.active?' data-mup-active="true"':'')+' style="border-left:4px solid '+col+';margin:8px 0">'
         +'<div class="mup-hd" style="padding:4px 10px;">'
         +'<span class="mup-hd-lbl" style="display:inline-flex;align-items:center;gap:2px;user-select:none;"'+mupStateAttr+'>'
@@ -234,7 +240,7 @@ function buildMupHtmlMap(blocks, lines){
         +'</div>'
         +'<div class="mup-bd" style="padding:2px 10px 2px 1px;'+bodyDisplay+'">';
     } else {
-      openHtml='<div class="mup" data-mup-sym="'+escH(isV?'v':'h')+'" data-mup-pfx="'+escH(b.pfx)+'" data-mup-cn="'+escH(cn)+'"'
+      openHtml='<div class="mup" data-mup-sym="'+escH(isV?'v':'h')+'" data-mup-pfx="'+escH(b.pfx)+'" data-mup-cn="'+escH(cn)+'" data-mup-mtype="'+escH(b.mtype||'m')+'"'
         +(isLocked?' data-mup-locked="true"':'')+(b.active?' data-mup-active="true"':'')+' style="border-left:3px solid '+col+';margin:4px 0">'
         +'<div class="mup-hd" style="padding:3px 8px;font-size:0.85em;">'
         +'<span class="mup-hd-lbl" style="display:inline-flex;align-items:center;gap:2px;background:#f8f8f8;padding:1px 6px;border-radius:3px;user-select:none;"'+mupStateAttr+'>'
