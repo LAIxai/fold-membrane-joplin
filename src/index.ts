@@ -215,6 +215,7 @@
  *   v8.79 [2026.04.18(土)pm01:30] 自動修復を全面停止(Cmd+Sトリガのみに)。CN=3417_noteSelectWatcher の送出/受信ノート自動修復、および CN=7538 の switchedToMarkdown 修復ブロックを無効化。ユーザ指示: 書込みなしでのノート切替は普通の操作であり、意図的にCmd+Sを押したときだけ修復するべき。updated_time追跡とCN=9031のNOTE_SWITCH再描画は維持。
  *   v8.80 [2026.04.18(土)pm01:35] WYSIWYG→Markdownモード切替時の修復は復活。ユーザ指示: 通常のLaTeX(マクロ展開等)と同様、モード切替は意図的操作なので修復してよい。ノート切替(CN=3417)の自動修復停止は維持。
  *   v8.81 [2026.04.18(土)pm07:30] CN=6291_NAME_SYNC を「膜タグ全体同期」に拡張。markMup v3.0 不可侵膜(M)の受理: 正規表現 `[mM]` 対応。CN↔H1切替バグを修正(Pass2でtag/pfx/cn全てを開き膜に合わせる)。Pass3追加: cnまで変化した中間状態の救済としてドキュメント順孤立ペアも同期。これにより「開閉膜のどちらを編集しても、tag letter・pfx・cn が全て同期」が実現。mupEditor.js v2.3 と併せてリアルタイム同期も全文ペアリング方式に刷新。CN=8276_INLINE_ARROW: tag letter逆引き(m/M保持)+折畳融合矢印対応(FOLDED_FUSED)。折畳状態で開始膜が壊れ<span>▶◀</span>形式になっても閉じ膜から復元可能に。
+ *   v8.82 [2026.04.19(日)pm00:30] CN=3714_TAGLINE_RESIDUE 新設。TinyMCE段落結合で膜タグ行末尾に <span style=...> 残骸が付着する破損を救済。タグ行直後に `<span...>text</span>` が含まれる場合、spanタグを剥いで純テキスト化し、次行に分離する。膜#1の本文が膜#2タグ行末尾に混入する「成済まし」破損パターンを修復。INLINE_ARROW直後・NAME_SYNC前に実行。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -473,6 +474,45 @@ function repairMupSpan(body: string): string {
     fixed = _iaLines.join('\n');
   }
   // \▲[CN=8276_repairMupSpan.INLINE_ARROW]
+
+  // \▼[CN=3714_repairMupSpan.TAGLINE_RESIDUE] // v8.82 タグ行末尾の<span>残骸を次行へ分離
+  // TinyMCE段落結合で、前膜の本文や残骸spanが次膜のタグ行末尾にくっつくことがある:
+  //   $▶m[H1=new_3221]$ <span style="color:rgb(50,55,63);">あ</span><span>\(⊕0+0\)</span>
+  // 正規タグ直後に `<span` が検出されたら、
+  //   1. span タグを剥いで純テキスト化
+  //   2. LaTeXエスケープ \( \) → [ ] を復元
+  //   3. タグ行はバッジだけ残して残余は次行に押し出し
+  // これによりレンダラーが残骸をコメント領域に描画することを防ぐ。
+  {
+    const _trLines = fixed.split('\n');
+    const _trOut: string[] = [];
+    const RE_TAG_WITH_TAIL = /^([ \t]*\$?[▼▶▲◀][mM]\[[^\]\n]+\]\$?)(.*)$/;
+    for (let i = 0; i < _trLines.length; i++) {
+      const line = _trLines[i];
+      const m = RE_TAG_WITH_TAIL.exec(line);
+      if (!m) { _trOut.push(line); continue; }
+      const head = m[1];
+      let tail = m[2];
+      // <span style=…> 残骸が無ければノータッチ
+      if (!/<span\b[^>]*style=/i.test(tail)) { _trOut.push(line); continue; }
+      // バッジ [⊕X+Y] / [⊖X+Y] / [⊘...] を退避
+      let badge = '';
+      const bm = /\[[⊕⊖⊘][^\]\n]*\]/.exec(tail);
+      if (bm) { badge = bm[0]; tail = tail.replace(bm[0], ''); }
+      // <span…>text</span> → text に剥ぐ（ネスト無しの単純ケース）
+      let stripped = tail.replace(/<span[^>]*>([^<]*)<\/span>/gi, '$1');
+      // LaTeX エスケープ復元: \(X\) → [X]（badge残骸がLaTeX化されているケース）
+      stripped = stripped.replace(/\\\(([^\\()]*?)\\\)/g, '[$1]');
+      // 残存する<span…>や</span>を念のため除去
+      stripped = stripped.replace(/<\/?span[^>]*>/gi, '').trim();
+      // タグ行はバッジのみ残して綺麗に
+      _trOut.push(head + (badge ? ' ' + badge : ''));
+      // 残余を次行として追加（空でない場合のみ）
+      if (stripped) _trOut.push(stripped);
+    }
+    fixed = _trOut.join('\n');
+  }
+  // \▲[CN=3714_repairMupSpan.TAGLINE_RESIDUE]
 
   // \▼[CN=5318_repairMupSpan.HEADING2MUP] // 壊れたH1/H2/H3開き膜の復元
   // TinyMCEは $▼m[H1=name]$ の膜ヘッダー（font-size:1.5em;font-weight:bold）を
