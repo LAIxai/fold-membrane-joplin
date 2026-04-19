@@ -1,5 +1,10 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v7.9
+// \▼[CN=FOLD] // Fold Membrane - click handler v7.10
 // ─── changelog ───────────────────────────────────────
+// v7.10 2026.04.19(日)pm06:50 現在状態ハイライト不動作バグ修正。
+//                      原因: v7.9で .mup-status（空のプレースホルダー）から状態を読んでいた。
+//                      実際の値は <code class="mup-badge"> に入っている。
+//                      修正: .mup-badge の data-state/data-fixed (renderer v6.7) を優先。
+//                      フォールバック: テキスト解析。二段構えで旧renderer にも対応。
 // v7.9  2026.04.19(日) バッジ状態インラインボタン行(D案): ⊕/⊕f/⊖/⊖f を1クリックで切替。
 //                      メニュー末尾に「バッジ: [⊕][⊕f][⊖][⊖f]」を追加。現在状態はハイライト。
 //                      クリック時 mupSetBadgeState を index.ts CN=7318_SET_BADGE_STATE へ送信。
@@ -738,14 +743,25 @@ function _findNearestVisibleMup() {
   });
   _menu.appendChild(_stateRow);
 
-  // 現在の状態を .mup-status のテキストから読み取る（例: "[⊕f0+0]" → "⊕f"）
+  // 現在の状態を .mup-badge (renderer v6.7以降) の data-state/data-fixed から読み取る
+  //  v6.7: .mup-badge に data-state="⊕" data-fixed="1" 属性あり→優先使用
+  //  フォールバック: .mup-badge のテキスト（例: "[⊕f0+0]"）から正規表現で抽出
+  //  二段構えで renderer 旧版でも動作する
+  //  注意: .mup-status は空のプレースホルダー(🟢用)。バッジ本体は .mup-badge
   function _currentBadgeState(mupEl) {
     if (!mupEl) return null;
     var hd = mupEl.querySelector(':scope > .mup-hd');
     if (!hd) return null;
-    var st = hd.querySelector('.mup-status');
-    if (!st) return null;
-    var m = (st.textContent || '').match(/([⊕⊖⊘])(f?)/);
+    var badge = hd.querySelector('.mup-badge');
+    if (!badge) return null;
+    // 第1選択: data属性（v6.7以降）
+    var dState = badge.getAttribute('data-state');
+    if (dState) {
+      var dFixed = badge.getAttribute('data-fixed') === '1';
+      return dState + (dFixed ? 'f' : '');
+    }
+    // フォールバック: テキスト解析
+    var m = (badge.textContent || '').match(/([⊕⊖⊘])(f?)/);
     return m ? (m[1] + (m[2] || '')) : null;
   }
   function _updateStateHighlight(mupEl) {

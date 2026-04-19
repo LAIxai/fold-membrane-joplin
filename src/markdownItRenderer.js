@@ -1,8 +1,13 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 6.6
- * @date    2026.04.19(日)
+ * @version 6.7
+ * @date    2026.04.19(日)pm06:50
+ * @desc    v6.7 [2026.04.19(日)pm06:50]: fフラグ(固定表示)をパーサに正式対応。
+ *                [⊕f0+0]等を status.fixed=true として解析。描画時 f を state 後ろに付与、
+ *                color を紫系(#7a6ad4)に変更して視認性UP。.mup-badgeに data-state/data-fixed
+ *                属性を追加し mupFold.js から現在状態を確実に読み取れるようにした(v0.9.139の
+ *                ハイライト不動作バグ修正)。f の実挙動(カウント凍結)は依然として未実装。
  * @desc    v6.6 [2026.04.19(日)am11:50]: 膜範囲インジケータ線の左パディング 3px→1px。さらに密着。
  * @desc    v6.5 [2026.04.19(日)]: 膜範囲インジケータ線(.mup-bd)の左パディング狭め。8〜10px→3pxで線間隔圧縮。
  * @desc    v6.4 [2026.04.17(金)pm04:29]: 閉じ膜(.mup-ft)に<em> // comment </em>を常設。開始膜と構造対称化し
@@ -74,14 +79,15 @@ function fixDisplaySrc(src) {
 
 // \▼[CN=RENDERER.PARSE] // 膜パーサー
 function parseStatus(commentRaw){
-  // \▼[CN=RENDERER.PARSE.STATUS] // [⊕/⊖/⊘ N+M] / [∞/♾️] / [N] を解析
+  // \▼[CN=RENDERER.PARSE.STATUS] // [⊕/⊖/⊘ f? N+M] / [∞/♾️] / [N] を解析
+  // v6.7: fフラグ(固定表示)対応。[⊕f0+0] → {state:'⊕',fixed:true,count:'0',exp:'0'}
   var raw=commentRaw.replace(/♾️/g,'∞').replace(/\u267e\ufe0f/g,'∞').replace(/\u267e/g,'∞');
-  var m=raw.match(/^(.*?)\s*\[(⊕|⊖|⊘)(∞|\d+)?(?:\+(\d+))?\]\s*$/);
-  if(m) return {comment:m[1].trim(),status:{state:m[2],count:m[3]||'0',exp:m[4]||'0'}};
+  var m=raw.match(/^(.*?)\s*\[(⊕|⊖|⊘)(f?)(∞|\d+)?(?:\+(\d+))?\]\s*$/);
+  if(m) return {comment:m[1].trim(),status:{state:m[2],fixed:!!m[3],count:m[4]||'0',exp:m[5]||'0'}};
   var m2=raw.match(/^(.*?)\s*\[∞\]\s*$/);
-  if(m2) return {comment:m2[1].trim(),status:{state:'⊕',count:'∞',exp:'0'}};
+  if(m2) return {comment:m2[1].trim(),status:{state:'⊕',fixed:false,count:'∞',exp:'0'}};
   var m3=raw.match(/^(.*?)\s*\[(\d+)\]\s*$/);
-  if(m3) return {comment:m3[1].trim(),status:{state:'⊕',count:m3[2],exp:'0'}};
+  if(m3) return {comment:m3[1].trim(),status:{state:'⊕',fixed:false,count:m3[2],exp:'0'}};
   return {comment:commentRaw.trim(),status:null};
   // \▲[CN=RENDERER.PARSE.STATUS]
 }
@@ -156,12 +162,17 @@ function buildMupHtmlMap(blocks, lines){
     // \▲[CN=RENDERER.BUILD.STATE]
 
     // \▼[CN=RENDERER.BUILD.STATUS] // ステータスバッジHTML
+    // v6.7: fixed(固定表示)対応。data-state/data-fixed属性を追加しmupFold.jsから読み取り可能に。
     var statusHtml='';
     if(st){
       var isInf=(st.count==='∞');
-      var dispTxt=isInf?'['+st.state+'∞]':'['+st.state+st.count+'+'+st.exp+']';
-      var sCol=isInf?'#e00':'#aaa';
+      var stateStr=st.state+(st.fixed?'f':'');
+      var dispTxt=isInf?'['+stateStr+'∞]':'['+stateStr+st.count+'+'+st.exp+']';
+      // fixed時は色を変えて視認性UP（将来的にユーザ設定化してもよい）
+      var sCol=isInf?'#e00':(st.fixed?'#7a6ad4':'#aaa');
       statusHtml=' <code class="mup-badge"'
+        +' data-state="'+escH(st.state)+'"'
+        +' data-fixed="'+(st.fixed?'1':'0')+'"'
         +' data-count="'+escH(st.count)+'"'
         +' data-exp="'+escH(st.exp)+'"'
         +' style="font-size:0.8em;font-family:monospace;color:'+sCol+';background:none;border:none;padding:0">'
