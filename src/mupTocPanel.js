@@ -1,4 +1,8 @@
-// \▼[CN=TOC_PANEL] // Fold Membrane - 膜目次パネル v2.3
+// \▼[CN=TOC_PANEL] // Fold Membrane - 膜目次パネル v2.4
+// v2.4 2026.04.20(月)am00:18 色バー(border-left)を深さに応じてインデント化。
+//       外側row=背景/下線、内側bar=margin-left+border-left。編集エリアの膜左罫線と見た目が揃う。
+//       文字は線から常に8px固定（padding-left）。線の位置で深さが分かる（ユーザ指定）。
+//       depth乗数は 3px → 6px にアップ（v0.9.147テストで「やや少な過ぎ」指摘）。
 // v2.3 2026.04.19(日)pm11:59 インデント 14px/level → 3px/level に縮小。深い階層でも横幅に余裕。
 // Joplin panels API webviewで動作。index.tsと双方向メッセージ通信。
 // Pull: 600msごとにrequestTocでindex.tsから最新データを取得（確実）
@@ -255,33 +259,46 @@
       return;
     }
 
+    // v2.4: 色バー(border-left)を深さに応じてインデントする。
+    //        外側 row = 背景/ボーダー下線、内側 bar = margin-leftで位置決め+border-left=色バー。
+    //        これで編集エリアの膜左罫線と同じ見た目になる（左端に張りつかない）。
+    //        depth乗数は 3px → 6px にアップ（v0.9.147のテストで「やや少な過ぎ」指摘）。
+    var _INDENT_PER_LEVEL = 6;
     membranes.forEach(function(m) {
       var isActive = (m.cn === _activeCN);
       var row = document.createElement('div');
       row.className = 'toc-row' + (isActive ? ' active' : '');
       row.style.cssText = [
-        'padding:5px 10px 5px ' + (8 + m.depth * 3) + 'px',
         'cursor:pointer',
-        'border-left:3px solid ' + (isActive ? m.color : 'transparent'),
         'border-bottom:1px solid #f3f3f3',
-        'display:flex','align-items:center','gap:5px',
         'background:' + (isActive ? '#e8f0fe' : 'transparent'),
-        'font-size:12px','line-height:1.5','user-select:none'
+        'user-select:none'
       ].join(';');
+
+      // 内側バー: margin-leftでインデント、border-leftで色バー
+      var bar = document.createElement('div');
+      bar.style.cssText = [
+        'margin-left:' + (m.depth * _INDENT_PER_LEVEL) + 'px',
+        'padding:5px 10px 5px 8px',
+        'border-left:3px solid ' + (isActive ? m.color : 'transparent'),
+        'display:flex','align-items:center','gap:5px',
+        'font-size:12px','line-height:1.5'
+      ].join(';');
+      row.appendChild(bar);
 
       // CN名（膜の色で表示）
       var nameSpan = document.createElement('span');
       nameSpan.style.cssText = 'font-family:monospace;font-weight:bold;color:' + m.color
         + ';flex-shrink:0';
       nameSpan.textContent = m.cn;
-      row.appendChild(nameSpan);
+      bar.appendChild(nameSpan);
 
       // 🟢アクティブマーク（名前の後ろ）
       if (isActive) {
         var activeSpan = document.createElement('span');
         activeSpan.textContent = '🟢';
         activeSpan.style.cssText = 'font-size:0.9em;flex-shrink:0';
-        row.appendChild(activeSpan);
+        bar.appendChild(activeSpan);
       }
 
       // コメント
@@ -289,16 +306,16 @@
         var cmtSpan = document.createElement('span');
         cmtSpan.style.cssText = 'color:#999;font-size:0.85em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1';
         cmtSpan.textContent = '// ' + m.comment;
-        row.appendChild(cmtSpan);
+        bar.appendChild(cmtSpan);
       }
 
       row.addEventListener('mouseenter', function() {
         if (!isActive) row.style.background = '#f5f5f5';
-        row.style.borderLeftColor = m.color;
+        bar.style.borderLeftColor = m.color;
       });
       row.addEventListener('mouseleave', function() {
         row.style.background = isActive ? '#e8f0fe' : 'transparent';
-        row.style.borderLeftColor = isActive ? m.color : 'transparent';
+        bar.style.borderLeftColor = isActive ? m.color : 'transparent';
       });
       row.addEventListener('click', function() {
         webviewApi.postMessage({ type: 'tocClick', cn: m.cn });
