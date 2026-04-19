@@ -1,8 +1,13 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 6.7
- * @date    2026.04.19(日)pm06:50
+ * @version 6.8
+ * @date    2026.04.19(日)pm10:35
+ * @desc    v6.8 [2026.04.19(日)pm10:35]: 重複バッジ耐性。parseStatus が行内の全バッジ
+ *                ([⊕/⊖/⊘f? N+M])を抽出し、先頭を status として採用、残り全てをコメント
+ *                から除去する。v6.6以前に[⊖f0+0]を理解できずCN=8153が[⊕0+0]を追加した
+ *                結果として残った重複バッジ源を、ユーザー意図どおりの先頭バッジで描画。
+ *                (v0.9.140 メニューが常に⊕をハイライトするバグ修正)
  * @desc    v6.7 [2026.04.19(日)pm06:50]: fフラグ(固定表示)をパーサに正式対応。
  *                [⊕f0+0]等を status.fixed=true として解析。描画時 f を state 後ろに付与、
  *                color を紫系(#7a6ad4)に変更して視認性UP。.mup-badgeに data-state/data-fixed
@@ -80,10 +85,27 @@ function fixDisplaySrc(src) {
 // \▼[CN=RENDERER.PARSE] // 膜パーサー
 function parseStatus(commentRaw){
   // \▼[CN=RENDERER.PARSE.STATUS] // [⊕/⊖/⊘ f? N+M] / [∞/♾️] / [N] を解析
+  // v6.8: 重複バッジ耐性。全てのバッジを検出→先頭を採用→全てコメントから除去。
+  //       v6.6以前が[⊖f0+0]を理解できずCN=8153が[⊕0+0]を追加した残骸を救済。
   // v6.7: fフラグ(固定表示)対応。[⊕f0+0] → {state:'⊕',fixed:true,count:'0',exp:'0'}
   var raw=commentRaw.replace(/♾️/g,'∞').replace(/\u267e\ufe0f/g,'∞').replace(/\u267e/g,'∞');
-  var m=raw.match(/^(.*?)\s*\[(⊕|⊖|⊘)(f?)(∞|\d+)?(?:\+(\d+))?\]\s*$/);
-  if(m) return {comment:m[1].trim(),status:{state:m[2],fixed:!!m[3],count:m[4]||'0',exp:m[5]||'0'}};
+  // 全てのバッジ候補を抽出（複数あれば先頭を採用）
+  var re=/\[(⊕|⊖|⊘)(f?)(∞|\d+)?(?:\+(\d+))?\]/g;
+  var matches=[];
+  var mm;
+  while((mm=re.exec(raw))!==null){
+    matches.push({idx:mm.index,len:mm[0].length,state:mm[1],fixed:!!mm[2],count:mm[3]||'0',exp:mm[4]||'0'});
+  }
+  if(matches.length>0){
+    var chosen=matches[0];  // 先頭バッジをユーザー意図として採用
+    // 残り全てをコメントから除去（末尾から逆順に）
+    var cleaned=raw;
+    for(var i=matches.length-1;i>=0;i--){
+      var mi=matches[i];
+      cleaned=cleaned.slice(0,mi.idx)+cleaned.slice(mi.idx+mi.len);
+    }
+    return {comment:cleaned.replace(/\s+/g,' ').trim(),status:{state:chosen.state,fixed:chosen.fixed,count:chosen.count,exp:chosen.exp}};
+  }
   var m2=raw.match(/^(.*?)\s*\[∞\]\s*$/);
   if(m2) return {comment:m2[1].trim(),status:{state:'⊕',fixed:false,count:'∞',exp:'0'}};
   var m3=raw.match(/^(.*?)\s*\[(\d+)\]\s*$/);
