@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.87
- * @date    2026.04.19(日)pm10:40
+ * @version 8.88
+ * @date    2026.04.19(日)pm10:55
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -221,6 +221,7 @@
  *   v8.85 [2026.04.19(日)pm05:30] CN=8215_UNWRAP_TO_CODE 新設。膜ボタン(v8.62)の逆操作として「🔧 ブロックコードに戻す」をmupFold.js v7.8コンテキストメニューに追加。選択膜をcn+pfx+occurrenceIndexで特定し note.body 中で ```…``` に包んでDB書戻し+editor.setTextで即時反映。TinyMCEが「コードブロック」として描画するので、WYSIWYGのままダブルクリックで膜名/CN/コメントを編集可能。離脱後Cmd+SでCN=3094_CODEFENCE_UNWRAPが自動的に膜形式へ復元する「ラウンドトリップ編集」。ユーザ指示: LaTeX数式のダブルクリック編集と同じ感覚でWYSIWYGだけで膜修正を完結したい。同名入れ子膜にもdepth追跡で正確対応。
  *   v8.86 [2026.04.19(日)pm06:20] CN=7318_SET_BADGE_STATE 新設。mupFold.js v7.9 のD案インラインボタン行(バッジ: [⊕][⊕f][⊖][⊖f])から呼ばれる。開き膜行のバッジを state に書換え、count/exp は継承。state ホワイトリスト検証(/^[⊕⊖⊘]f?$/)で不正値拒否。f の実挙動(no-increment)は未実装だがソース書換は可能→「固定表示フラグの書込み/削除」を1クリックで提供。モーダル不要・サブメニュー不要の最短動線。ユーザ指示: 3つの個別切替メニューは冗長、4状態を並べてハイライト表示する方がUX良い。
  *   v8.87 [2026.04.19(日)pm10:40] CN=7318 重複バッジ対応。v6.6以前が [⊖f0+0] を理解できずCN=8153が [⊕0+0] を追記した残骸で `[⊖f0+0] [⊕0+0]` のように2バッジ並ぶソースが存在。set時に全バッジを除去→先頭のcount/exp継承→末尾に新バッジ1個だけ再付与することでクリーンアップ。併せて markdownItRenderer v6.8 の prefer-first パーサと対を成し、D案ボタンのハイライトが現在状態と正しく一致するようにする(v0.9.140 常に⊕がハイライトされるバグ修正)。
+ *   v8.88 [2026.04.19(日)pm10:55] CN=5128_SET_PFX 新設。mupFold.js v7.11 のプレフィックスインラインボタン行(種類: [CN][H1][H2][H3])から呼ばれる。開き膜の [OLDPFX=cn] と対応する閉じ膜の両方を depth追跡で特定し [NEWPFX=cn] に置換(cn名は保持)。バリデーション: oldPfx/newPfx ともに /^(?:CN|H[1-3])$/ のホワイトリスト。バッジ状態切替と同じ「1クリックで切替・現在値ハイライト」のUX。これで膜の名前・バッジ状態・プレフィックス全てがWYSIWYGから編集可能になりマークダウンモードの出番がほぼ消失。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -1351,6 +1352,54 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
         return;
       }
       // \▲[CN=7318_onMessage.SET_BADGE_STATE]
+
+      // \▼[CN=5128_onMessage.SET_PFX] // プレフィックス切替 CN⇄H1⇄H2⇄H3
+      // mupFold.js v7.11 のプレフィックスインラインボタン行から呼ばれる。
+      // 開き膜 [OLDPFX=cn] を [NEWPFX=cn] に置換し、対応する閉じ膜も同時に書換える。
+      // 同名入れ子に備えdepth追跡で正しいペアを特定する。
+      if (msg.type === 'mupSetPfx') {
+        const cn     = String(msg.cn || '');
+        const oldPfx = String(msg.pfx || 'CN');
+        const newPfx = String(msg.newPfx || '');
+        const occurrenceIndex = typeof msg.occurrenceIndex === 'number' ? msg.occurrenceIndex : 0;
+        if (!cn || !newPfx || oldPfx === newPfx) return;
+        if (!/^(?:CN|H[1-3])$/.test(oldPfx) || !/^(?:CN|H[1-3])$/.test(newPfx)) return;
+        const note = await joplin.workspace.selectedNote();
+        if (!note?.body) return;
+        const escapedCn = cn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const cnPat = /^\d{4}/.test(cn) ? escapedCn : '(?:\\d{4}_)?' + escapedCn;
+        const openRe  = new RegExp('^([ \\t]*\\$?(?:[▼▶]m|M[▼▶]|[▼▶]_M)\\[)' + oldPfx + '=(' + cnPat + ')(\\]\\$?.*)$');
+        const closeRe = new RegExp('^([ \\t]*\\$?(?:[▲◀]m|M[▲◀]|[▲◀]_M)\\[)' + oldPfx + '=(' + cnPat + ')(\\]\\$?.*)$');
+        const lines = note.body.split('\n');
+        // occurrenceIndex 番目の開き膜行を探す
+        let openIdx = -1, seen = 0;
+        for (let i = 0; i < lines.length; i++) {
+          if (openRe.test(lines[i])) {
+            if (seen === occurrenceIndex) { openIdx = i; break; }
+            seen++;
+          }
+        }
+        if (openIdx < 0) return;
+        // 対応する閉じ膜をdepth追跡で特定（同名入れ子対応）
+        let depth = 1, closeIdx = -1;
+        for (let i = openIdx + 1; i < lines.length; i++) {
+          if (openRe.test(lines[i])) depth++;
+          else if (closeRe.test(lines[i])) { depth--; if (depth === 0) { closeIdx = i; break; } }
+        }
+        if (closeIdx < 0) return;
+        // 両方の行のpfxを置換（cn名は保持）
+        lines[openIdx]  = lines[openIdx].replace(openRe,  '$1' + newPfx + '=$2$3');
+        lines[closeIdx] = lines[closeIdx].replace(closeRe, '$1' + newPfx + '=$2$3');
+        const newBody = lines.join('\n');
+        if (newBody === note.body) return;
+        // 成済まし防止
+        const _still = await joplin.workspace.selectedNote();
+        if (_still?.id !== note.id) return;
+        await joplin.data.put(['notes', note.id], null, { body: newBody });
+        try { await joplin.commands.execute('editor.setText', newBody); } catch(_e) {}
+        return;
+      }
+      // \▲[CN=5128_onMessage.SET_PFX]
 
       // \▼[CN=4731_onMessage.TOC] // 膜目次パネル: トグル / データ更新 / クリック結果返却
       if (msg.type === 'mupToggleToc') {

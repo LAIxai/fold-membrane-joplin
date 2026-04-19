@@ -1,5 +1,9 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v7.10
+// \▼[CN=FOLD] // Fold Membrane - click handler v7.11
 // ─── changelog ───────────────────────────────────────
+// v7.11 2026.04.19(日)pm10:50 プレフィックスインラインボタン行を追加。
+//                      バッジ切替(v7.9)と同構造で「CN/H1/H2/H3」を1クリックで切替。
+//                      現在pfxはハイライト表示。クリック時 mupSetPfx を index.ts へ送信。
+//                      開き膜＋対応閉じ膜の両方を書き換えるためdepth追跡で同名入れ子にも対応。
 // v7.10 2026.04.19(日)pm06:50 現在状態ハイライト不動作バグ修正。
 //                      原因: v7.9で .mup-status（空のプレースホルダー）から状態を読んでいた。
 //                      実際の値は <code class="mup-badge"> に入っている。
@@ -635,6 +639,10 @@ function _findNearestVisibleMup() {
     if (typeof _updateStateHighlight === 'function') {
       try { _updateStateHighlight(mupEl); } catch(_e) {}
     }
+    // v7.11: プレフィックスボタンのハイライト更新
+    if (typeof _updatePfxHighlight === 'function') {
+      try { _updatePfxHighlight(mupEl); } catch(_e) {}
+    }
     _menu.style.display = 'block';
     var mx = Math.min(x, window.innerWidth  - _menu.offsetWidth  - 8);
     var my = Math.min(y, window.innerHeight - _menu.offsetHeight - 8);
@@ -769,6 +777,85 @@ function _findNearestVisibleMup() {
     for (var i = 0; i < _stateButtons.length; i++) {
       var btn = _stateButtons[i];
       var isActive = btn.getAttribute('data-state') === cur;
+      if (isActive) {
+        btn.setAttribute('data-active', '1');
+        btn.style.background   = '#1a73e8';
+        btn.style.color        = '#fff';
+        btn.style.borderColor  = '#1a73e8';
+      } else {
+        btn.removeAttribute('data-active');
+        btn.style.background   = '#fafafa';
+        btn.style.color        = '#333';
+        btn.style.borderColor  = '#ccc';
+      }
+    }
+  }
+
+  // ④-2 プレフィックスインラインボタン行（v7.11）: CN/H1/H2/H3 を1クリックで切替
+  //     バッジ状態切替(v7.9)と同じ設計。開き膜＋対応閉じ膜の両方を書き換える。
+  //     メッセージ: mupSetPfx → index.ts CN=5128_SET_PFX が処理。
+  _addSep();
+  var _pfxRow = document.createElement('div');
+  _pfxRow.style.cssText = 'display:flex;padding:5px 14px 5px 18px;gap:4px;align-items:center;';
+  var _pfxLabel = document.createElement('span');
+  _pfxLabel.textContent = '種類:';
+  _pfxLabel.style.cssText = 'color:#666;font-size:12px;margin-right:6px;user-select:none;';
+  _pfxRow.appendChild(_pfxLabel);
+  var _PFXS = ['CN', 'H1', 'H2', 'H3'];
+  var _pfxButtons = [];
+  _PFXS.forEach(function(p) {
+    var btn = document.createElement('div');
+    btn.textContent = p;
+    btn.setAttribute('data-pfx', p);
+    btn.style.cssText = [
+      'padding:3px 9px','border:1px solid #ccc','border-radius:3px',
+      'cursor:pointer','font-size:12px','background:#fafafa','color:#333',
+      'user-select:none','min-width:22px','text-align:center',
+      'font-family:monospace'
+    ].join(';');
+    btn.onmouseenter = function() {
+      if (btn.getAttribute('data-active') !== '1') {
+        btn.style.background = '#e8f0fe'; btn.style.color = '#1a73e8';
+      }
+    };
+    btn.onmouseleave = function() {
+      if (btn.getAttribute('data-active') !== '1') {
+        btn.style.background = '#fafafa'; btn.style.color = '#333';
+      }
+    };
+    btn.onmousedown = function(e) { e.preventDefault(); };
+    btn.onclick = function() {
+      if (!_ctxMup) { _hide(); return; }
+      var cn      = _ctxMup.getAttribute('data-mup-cn');
+      var curPfx  = _ctxMup.getAttribute('data-mup-pfx') || 'CN';
+      _hide();
+      if (!cn) return;
+      if (curPfx === p) return; // 同じなら何もしない
+      var all = document.querySelectorAll('.mup[data-mup-cn="'+cn+'"][data-mup-pfx="'+curPfx+'"]');
+      var occIdx = Array.prototype.indexOf.call(all, _ctxMup);
+      webviewApi.postMessage('markMupRenderer', {
+        type: 'mupSetPfx',
+        cn:   cn,
+        pfx:  curPfx,
+        newPfx: p,
+        occurrenceIndex: occIdx >= 0 ? occIdx : 0
+      });
+    };
+    _pfxRow.appendChild(btn);
+    _pfxButtons.push(btn);
+  });
+  _menu.appendChild(_pfxRow);
+
+  // 現在のpfxは mup 要素の data-mup-pfx から直接読む（renderer が常に設定）
+  function _currentPfx(mupEl) {
+    if (!mupEl) return null;
+    return mupEl.getAttribute('data-mup-pfx') || null;
+  }
+  function _updatePfxHighlight(mupEl) {
+    var cur = _currentPfx(mupEl);
+    for (var i = 0; i < _pfxButtons.length; i++) {
+      var btn = _pfxButtons[i];
+      var isActive = btn.getAttribute('data-pfx') === cur;
       if (isActive) {
         btn.setAttribute('data-active', '1');
         btn.style.background   = '#1a73e8';
