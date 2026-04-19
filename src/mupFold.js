@@ -1,5 +1,6 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v7.13
+// \▼[CN=FOLD] // Fold Membrane - click handler v7.14
 // ─── changelog ───────────────────────────────────────
+// v7.14 2026.04.19(日)pm11:30 ラベル微調整: "Recompile to CodeBlock" → "Convert to code block"
 // v7.13 2026.04.19(日)pm11:25 「Name:」テキスト入力行を追加。
 //                      Enterで確定→mupSetName送信(index.ts CN=6392)、Escapeは既存ハンドラで
 //                      メニュー閉じ(=キャンセル)。表示時は data-mup-cn で入力欄初期化。
@@ -693,7 +694,7 @@ function _findNearestVisibleMup() {
   //    letting the user edit name/CN/comment inline like a LaTeX block.
   //    Cmd+S → CN=3094_CODEFENCE_UNWRAP restores membrane form automatically.
   _addSep();
-  _addItem('🔧 Recompile to CodeBlock', function() {
+  _addItem('🔧 Convert to code block', function() {
     if (!_ctxMup) return;
     var cn  = _ctxMup.getAttribute('data-mup-cn');
     var pfx = _ctxMup.getAttribute('data-mup-pfx') || 'CN';
