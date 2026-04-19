@@ -1,5 +1,11 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v7.11
+// \▼[CN=FOLD] // Fold Membrane - click handler v7.12
 // ─── changelog ───────────────────────────────────────
+// v7.12 2026.04.19(日)pm11:15 メニュー英語化＋行順入替。
+//                      ラベル: エディタ切替→Switch editor / 名前をコピー→Copy name /
+//                       ブロックコードに戻す→Recompile to CodeBlock / バッジ→Badge /
+//                       種類→Type / 膜の中へ移動→Enter membrane。
+//                      行順: Type行をBadge行の上に挿入(insertBefore)。
+//                      「エディタ切替（名前の編集）」併記を削除し純粋なSwitch editorに。
 // v7.11 2026.04.19(日)pm10:50 プレフィックスインラインボタン行を追加。
 //                      バッジ切替(v7.9)と同構造で「CN/H1/H2/H3」を1クリックで切替。
 //                      現在pfxはハイライト表示。クリック時 mupSetPfx を index.ts へ送信。
@@ -651,17 +657,14 @@ function _findNearestVisibleMup() {
   }
   function _hide() { _menu.style.display = 'none'; }
 
-  // ① エディタ切替: WYSIWYGでは「名前の編集」用途を明示、プレビューでは汎用ラベル
-  _addItem(
-    _isWYSIWYG ? '⇄ エディタ切替（名前の編集）' : '⇄ エディタ切替',
-    function() {
-      var cn = _ctxMup ? _ctxMup.getAttribute('data-mup-cn') : null;
-      webviewApi.postMessage('markMupRenderer', { type: 'mupToggleEditor', cn: cn });
-    }
-  );
-  // ② 名前をコピー / Copy membrane contents
+  // ① Switch editor
+  _addItem('⇄ Switch editor', function() {
+    var cn = _ctxMup ? _ctxMup.getAttribute('data-mup-cn') : null;
+    webviewApi.postMessage('markMupRenderer', { type: 'mupToggleEditor', cn: cn });
+  });
+  // ② Copy name / Copy membrane contents
   _addSep();
-  _addItem('📋 名前をコピー', function() {
+  _addItem('📋 Copy name', function() {
     var name = _ctxMup ? (_ctxMup.getAttribute('data-mup-cn') || '') : '';
     if (!name) return;
     navigator.clipboard.writeText(name).catch(function(){});
@@ -676,13 +679,12 @@ function _findNearestVisibleMup() {
     var text = (clone.innerText || clone.textContent || '').trim();
     navigator.clipboard.writeText(text).catch(function(){});
   });
-  // ③ 🔧 ブロックコードに戻す — 膜ボタン(v8.62)の逆操作
-  //    この膜を ```…``` で包んで書き戻し、TinyMCEに「コードブロック」として表示させる。
-  //    WYSIWYGでLaTeX数式(ダブルクリック→編集→離脱で再レンダ)と同じ感覚で
-  //    膜の名前/CN/コメントを編集できるようにする。
-  //    編集後Cmd+S→CN=3094_CODEFENCE_UNWRAPが自動的に膜形式へ戻す。
+  // ③ 🔧 Recompile to CodeBlock — inverse of toolbar membrane button (v8.62)
+  //    Wraps this membrane in ```…``` so TinyMCE renders it as a code block,
+  //    letting the user edit name/CN/comment inline like a LaTeX block.
+  //    Cmd+S → CN=3094_CODEFENCE_UNWRAP restores membrane form automatically.
   _addSep();
-  _addItem('🔧 ブロックコードに戻す', function() {
+  _addItem('🔧 Recompile to CodeBlock', function() {
     if (!_ctxMup) return;
     var cn  = _ctxMup.getAttribute('data-mup-cn');
     var pfx = _ctxMup.getAttribute('data-mup-pfx') || 'CN';
@@ -705,7 +707,7 @@ function _findNearestVisibleMup() {
   var _stateRow = document.createElement('div');
   _stateRow.style.cssText = 'display:flex;padding:5px 14px 5px 18px;gap:4px;align-items:center;';
   var _stateLabel = document.createElement('span');
-  _stateLabel.textContent = 'バッジ:';
+  _stateLabel.textContent = 'Badge:';
   _stateLabel.style.cssText = 'color:#666;font-size:12px;margin-right:6px;user-select:none;';
   _stateRow.appendChild(_stateLabel);
   var _STATES = ['⊕', '⊕f', '⊖', '⊖f'];
@@ -794,11 +796,11 @@ function _findNearestVisibleMup() {
   // ④-2 プレフィックスインラインボタン行（v7.11）: CN/H1/H2/H3 を1クリックで切替
   //     バッジ状態切替(v7.9)と同じ設計。開き膜＋対応閉じ膜の両方を書き換える。
   //     メッセージ: mupSetPfx → index.ts CN=5128_SET_PFX が処理。
-  _addSep();
+  //     v7.12: 表示順を Type→Badge に変更（Typeが上）。separator共用のためここではsepを追加しない。
   var _pfxRow = document.createElement('div');
   _pfxRow.style.cssText = 'display:flex;padding:5px 14px 5px 18px;gap:4px;align-items:center;';
   var _pfxLabel = document.createElement('span');
-  _pfxLabel.textContent = '種類:';
+  _pfxLabel.textContent = 'Type:';
   _pfxLabel.style.cssText = 'color:#666;font-size:12px;margin-right:6px;user-select:none;';
   _pfxRow.appendChild(_pfxLabel);
   var _PFXS = ['CN', 'H1', 'H2', 'H3'];
@@ -844,7 +846,8 @@ function _findNearestVisibleMup() {
     _pfxRow.appendChild(btn);
     _pfxButtons.push(btn);
   });
-  _menu.appendChild(_pfxRow);
+  // v7.12: Type行をBadge行の前に挿入（DOM順で Type → Badge になるように）
+  _menu.insertBefore(_pfxRow, _stateRow);
 
   // 現在のpfxは mup 要素の data-mup-pfx から直接読む（renderer が常に設定）
   function _currentPfx(mupEl) {
@@ -875,7 +878,7 @@ function _findNearestVisibleMup() {
   var _itemJumpInside = null;
   if (_isWYSIWYG) {
     _addSep();
-    _itemJumpInside = _addItem('膜の中へ移動', function() {
+    _itemJumpInside = _addItem('Enter membrane', function() {
       var em   = _ctxEmCur;
       var mup  = em ? em.closest('.mup') : null;
       var body = _getBody(mup);
