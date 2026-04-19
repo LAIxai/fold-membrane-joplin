@@ -1,8 +1,9 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 6.4
- * @date    2026.04.17(金)
+ * @version 6.5
+ * @date    2026.04.19(日)
+ * @desc    v6.5 [2026.04.19(日)]: 膜範囲インジケータ線(.mup-bd)の左パディング狭め。8〜10px→3pxで線間隔圧縮。
  * @desc    v6.4 [2026.04.17(金)pm04:29]: 閉じ膜(.mup-ft)に<em> // comment </em>を常設。開始膜と構造対称化し
  *                カーソル配置可能に。↑↓脱出バグ解消＋次膜への繋ぎメモ記入可。
  *                閉じ行の `// ...` コメントを独立パースし、開始と別内容を書ける。
@@ -197,7 +198,7 @@ function buildMupHtmlMap(blocks, lines){
         +statusHtml
         +'</span>'
         +'</div>'
-        +'<div class="mup-bd" style="padding:2px 10px;'+bodyDisplay+'">';
+        +'<div class="mup-bd" style="padding:2px 10px 2px 3px;'+bodyDisplay+'">';
     } else {
       openHtml='<div class="mup" data-mup-sym="'+escH(isV?'v':'h')+'" data-mup-pfx="'+escH(b.pfx)+'" data-mup-cn="'+escH(cn)+'"'
         +(isLocked?' data-mup-locked="true"':'')+(b.active?' data-mup-active="true"':'')+' style="border-left:3px solid '+col+';margin:4px 0">'
@@ -210,7 +211,7 @@ function buildMupHtmlMap(blocks, lines){
         +statusHtml
         +'</span>'
         +'</div>'
-        +'<div class="mup-bd" style="padding:4px 8px;'+bodyDisplay+'">';
+        +'<div class="mup-bd" style="padding:4px 8px 4px 3px;'+bodyDisplay+'">';
     }
     map[b.startLine]=openHtml;
     // \▲[CN=RENDERER.BUILD.OPEN]
