@@ -1,4 +1,5 @@
-// \▼[CN=TOC_PANEL] // Fold Membrane - 膜目次パネル v2.2
+// \▼[CN=TOC_PANEL] // Fold Membrane - 膜目次パネル v2.3
+// v2.3 2026.04.19(日)pm11:59 インデント 14px/level → 3px/level に縮小。深い階層でも横幅に余裕。
 // Joplin panels API webviewで動作。index.tsと双方向メッセージ通信。
 // Pull: 600msごとにrequestTocでindex.tsから最新データを取得（確実）
 // Push: updateToc受信でも即時更新（補助）
@@ -259,7 +260,7 @@
       var row = document.createElement('div');
       row.className = 'toc-row' + (isActive ? ' active' : '');
       row.style.cssText = [
-        'padding:5px 10px 5px ' + (8 + m.depth * 14) + 'px',
+        'padding:5px 10px 5px ' + (8 + m.depth * 3) + 'px',
         'cursor:pointer',
         'border-left:3px solid ' + (isActive ? m.color : 'transparent'),
         'border-bottom:1px solid #f3f3f3',
