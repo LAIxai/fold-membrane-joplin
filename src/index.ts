@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.85
- * @date    2026.04.19(日)pm05:30
+ * @version 8.86
+ * @date    2026.04.19(日)pm06:20
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -219,6 +219,7 @@
  *   v8.83 [2026.04.19(日)pm01:00] CN=3714_TAGLINE_RESIDUE 解析復元に改良。span剥ぎ+LaTeX復号後、末尾 [⊕X+Y]を #2 の本来のバッジとして救出し、`// comment` があればコメント復元、それ以前のゴミ(前膜本文残骸の「あ」等)は破棄。次行への押し出しを廃止し、#2 タグ行を綺麗に再構築する。
  *   v8.84 [2026.04.19(日)pm01:15] 3連対策。(1)CN=3715_COMMENT_JOIN: 分割コメント連結。タグ行末 `*?//` 停止 + 次行にバッジ付きコメント本文 → 1行に戻す。(2)CN=3716_BADGE_UNESCAPE: `\[⊕X+Y\]` の逆エスケープ正規化。Cmd+S往復で倍増する backslash 残骸を全域で `[⊕X+Y]` に戻す。(3)CN=4481拡張: `// *comment** [badge]` / `// *comment*` の包み `*` を除去。分割連結直後の二重アスタリスクにも対応。
  *   v8.85 [2026.04.19(日)pm05:30] CN=8215_UNWRAP_TO_CODE 新設。膜ボタン(v8.62)の逆操作として「🔧 ブロックコードに戻す」をmupFold.js v7.8コンテキストメニューに追加。選択膜をcn+pfx+occurrenceIndexで特定し note.body 中で ```…``` に包んでDB書戻し+editor.setTextで即時反映。TinyMCEが「コードブロック」として描画するので、WYSIWYGのままダブルクリックで膜名/CN/コメントを編集可能。離脱後Cmd+SでCN=3094_CODEFENCE_UNWRAPが自動的に膜形式へ復元する「ラウンドトリップ編集」。ユーザ指示: LaTeX数式のダブルクリック編集と同じ感覚でWYSIWYGだけで膜修正を完結したい。同名入れ子膜にもdepth追跡で正確対応。
+ *   v8.86 [2026.04.19(日)pm06:20] CN=7318_SET_BADGE_STATE 新設。mupFold.js v7.9 のD案インラインボタン行(バッジ: [⊕][⊕f][⊖][⊖f])から呼ばれる。開き膜行のバッジを state に書換え、count/exp は継承。state ホワイトリスト検証(/^[⊕⊖⊘]f?$/)で不正値拒否。f の実挙動(no-increment)は未実装だがソース書換は可能→「固定表示フラグの書込み/削除」を1クリックで提供。モーダル不要・サブメニュー不要の最短動線。ユーザ指示: 3つの個別切替メニューは冗長、4状態を並べてハイライト表示する方がUX良い。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -241,13 +242,14 @@
 //   \▼[CN=3518_editorScript] // CodeMirrorプラグイン登録
 //   \▼[CN=7201_modeCheck] // mupCheckMode応答受信  ⇒ Me ⇒ {2847_isMarkdownMode}
 //   \▼[CN=6174_hasDmg] // 破損パターン検出ユーティリティ  {7538,3417} ⇒ Me
-//   \▼[CN=4896_onMessage] // mupToggle/mupToggleEditorメッセージ受信  ⇒ Me ⇒ {5139,8347,2091,5763,9412,8215}
+//   \▼[CN=4896_onMessage] // mupToggle/mupToggleEditorメッセージ受信  ⇒ Me ⇒ {5139,8347,2091,5763,9412,8215,7318}
 //     \▼[CN=5139_onMessage.TOGGLE_EDITOR] // 🔖エディタ切替＋自動復旧  {4896,4471} ⇒ Me ⇒ {9043,2847}
 //     \▼[CN=8347_onMessage.PROBE] // Markdown/WYSIWYGモード判定
 //     \▼[CN=2091_onMessage.REGEX] // 開始膜行のバッジを置換
 //     \▼[CN=5763_onMessage.PUT] // DBへ書き戻し
 //     \▼[CN=9412_onMessage.EDITOR] // CM6エディタ左ペインを同期
 //     \▼[CN=8215_onMessage.UNWRAP_TO_CODE] // 膜を```で包む（膜ボタン逆操作）  ⇒ Me ⇒ {3094}
+//     \▼[CN=7318_onMessage.SET_BADGE_STATE] // バッジ状態切替（⊕/⊕f/⊖/⊖f）D案インラインボタン
 //   \▼[CN=2847_isMarkdownMode] // エディタモード判定ユーティリティ  {5139,7538,7125,7201} ⇒ Me
 //   \▼[CN=7538_modeWatcher.AUTOREPAIR] // モード変化監視: 双方向遷移検出→自動修復  ⇒ Me ⇒ {9043,2847,6174}
 //     \▼[CN=1647_modeWatcher.HR_RESTORE] // [無効化] Markdown→WYSIWYG: HR自動変換
@@ -1280,6 +1282,69 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
         return;
       }
       // \▲[CN=8215_onMessage.UNWRAP_TO_CODE]
+
+      // \▼[CN=7318_onMessage.SET_BADGE_STATE] // バッジ状態切替（⊕/⊕f/⊖/⊖f）
+      // mupFold.js v7.9 のインラインボタン行(D案)から呼ばれる。
+      // cn+pfx+occurrenceIndex で対象の開き膜行を特定し、badgeのstateを書換える。
+      // count/exp は保持。f の実挙動(no-increment)は未実装。本ハンドラはソース書換のみ担当。
+      if (msg.type === 'mupSetBadgeState') {
+        const cn    = String(msg.cn || '');
+        const pfx   = String(msg.pfx || 'CN');
+        const state = String(msg.state || '⊕'); // ⊕/⊕f/⊖/⊖f/⊘ 等
+        const occurrenceIndex = typeof msg.occurrenceIndex === 'number' ? msg.occurrenceIndex : 0;
+        if (!cn) return;
+        // state のホワイトリスト（安全のため）
+        if (!/^(?:[⊕⊖⊘])f?$/.test(state)) return;
+        const note = await joplin.workspace.selectedNote();
+        if (!note?.body) return;
+        const escapedCn = cn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const cnPat = /^\d{4}/.test(cn) ? escapedCn : '(?:\\d{4}_)?' + escapedCn;
+        const openRe = new RegExp(
+          '^[ \\t]*\\$?(?:[▼▶]m|M[▼▶]|[▼▶]_M)\\[' + pfx + '=' + cnPat + '\\]\\$?'
+        );
+        const lines = note.body.split('\n');
+        // occurrenceIndex 番目の開き膜行を探す
+        let idx = -1, seen = 0;
+        for (let i = 0; i < lines.length; i++) {
+          if (openRe.test(lines[i])) {
+            if (seen === occurrenceIndex) { idx = i; break; }
+            seen++;
+          }
+        }
+        if (idx < 0) return;
+        const line = lines[idx];
+        // バッジのパターン: [⊕/⊖/⊘][f?][count][+exp]? / [∞] / [♾️] / [数字のみ]
+        const badgeRe = /\[([⊕⊖⊘])(f?)(∞|♾️|\d+)(?:\+(\d+))?\]|\[(∞|♾️)\]|\[(\d+)\]/;
+        const m = line.match(badgeRe);
+        if (!m) return; // バッジ無しは対象外（CN=8153が自動付加するはず）
+        // count/exp を現行から継承
+        let count: string, exp: string;
+        if (m[1]) {
+          // 通常形式: [⊕N+M]
+          count = m[3];
+          exp   = m[4] || '0';
+        } else if (m[5]) {
+          // [∞] or [♾️]
+          count = m[5]; exp = '0';
+        } else {
+          // [数字のみ]
+          count = m[6]; exp = '0';
+        }
+        const newBadge = (count === '∞' || count === '♾️')
+          ? `[${state}${count}]`
+          : `[${state}${count}+${exp}]`;
+        const newLine = line.replace(badgeRe, newBadge);
+        if (newLine === line) return;
+        const newBody = lines.slice(0, idx).concat([newLine]).concat(lines.slice(idx + 1)).join('\n');
+        if (newBody === note.body) return;
+        // 成済まし防止
+        const _still = await joplin.workspace.selectedNote();
+        if (_still?.id !== note.id) return;
+        await joplin.data.put(['notes', note.id], null, { body: newBody });
+        try { await joplin.commands.execute('editor.setText', newBody); } catch(_e) {}
+        return;
+      }
+      // \▲[CN=7318_onMessage.SET_BADGE_STATE]
 
       // \▼[CN=4731_onMessage.TOC] // 膜目次パネル: トグル / データ更新 / クリック結果返却
       if (msg.type === 'mupToggleToc') {

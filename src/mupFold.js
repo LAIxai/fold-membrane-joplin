@@ -1,5 +1,10 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v7.8
+// \▼[CN=FOLD] // Fold Membrane - click handler v7.9
 // ─── changelog ───────────────────────────────────────
+// v7.9  2026.04.19(日) バッジ状態インラインボタン行(D案): ⊕/⊕f/⊖/⊖f を1クリックで切替。
+//                      メニュー末尾に「バッジ: [⊕][⊕f][⊖][⊖f]」を追加。現在状態はハイライト。
+//                      クリック時 mupSetBadgeState を index.ts CN=7318_SET_BADGE_STATE へ送信。
+//                      count/exp は保持。f の実挙動(カウント凍結)は未実装だがソース書換は可能。
+//                      LaTeX式ダブルクリック編集に近い体験を、モーダルなしで実現。
 // v7.8  2026.04.19(日) 「🔧 ブロックコードに戻す」メニュー追加: 膜ボタン(v8.62)の逆操作。
 //                      選択中の膜のCN/pfx/occurrenceIndexをmupUnwrapToCodeでindex.tsに送信。
 //                      index.tsがnote.body中の該当膜を```…```で包んで書き戻す。
@@ -621,6 +626,10 @@ function _findNearestVisibleMup() {
     if (_itemJumpInside) {
       _itemJumpInside.style.display = cursorEm ? '' : 'none';
     }
+    // v7.9: バッジ状態ボタンのハイライト更新（開く度に現在状態を反映）
+    if (typeof _updateStateHighlight === 'function') {
+      try { _updateStateHighlight(mupEl); } catch(_e) {}
+    }
     _menu.style.display = 'block';
     var mx = Math.min(x, window.innerWidth  - _menu.offsetWidth  - 8);
     var my = Math.min(y, window.innerHeight - _menu.offsetHeight - 8);
@@ -675,7 +684,90 @@ function _findNearestVisibleMup() {
       occurrenceIndex: occIdx >= 0 ? occIdx : 0
     });
   });
-  // ④ 膜の中へ移動（WYSIWYGのみ・ヘッダー/フッターemにカーソルがある時表示）
+  // ④ バッジ状態インラインボタン行（D案 v7.9）: ⊕/⊕f/⊖/⊖f を1クリックで切替
+  //    固定表示(f)を書込み/削除する専用UI。現在状態はハイライト表示。
+  //    f の実挙動(カウント凍結)は未実装。本UIはソース書換のみ。
+  //    メッセージ: mupSetBadgeState → index.ts CN=7318_SET_BADGE_STATE が処理。
+  _addSep();
+  var _stateRow = document.createElement('div');
+  _stateRow.style.cssText = 'display:flex;padding:5px 14px 5px 18px;gap:4px;align-items:center;';
+  var _stateLabel = document.createElement('span');
+  _stateLabel.textContent = 'バッジ:';
+  _stateLabel.style.cssText = 'color:#666;font-size:12px;margin-right:6px;user-select:none;';
+  _stateRow.appendChild(_stateLabel);
+  var _STATES = ['⊕', '⊕f', '⊖', '⊖f'];
+  var _stateButtons = [];
+  _STATES.forEach(function(s) {
+    var btn = document.createElement('div');
+    btn.textContent = s;
+    btn.setAttribute('data-state', s);
+    btn.style.cssText = [
+      'padding:3px 9px','border:1px solid #ccc','border-radius:3px',
+      'cursor:pointer','font-size:13px','background:#fafafa','color:#333',
+      'user-select:none','min-width:22px','text-align:center'
+    ].join(';');
+    btn.onmouseenter = function() {
+      if (btn.getAttribute('data-active') !== '1') {
+        btn.style.background = '#e8f0fe'; btn.style.color = '#1a73e8';
+      }
+    };
+    btn.onmouseleave = function() {
+      if (btn.getAttribute('data-active') !== '1') {
+        btn.style.background = '#fafafa'; btn.style.color = '#333';
+      }
+    };
+    btn.onmousedown = function(e) { e.preventDefault(); };
+    btn.onclick = function() {
+      if (!_ctxMup) { _hide(); return; }
+      var cn  = _ctxMup.getAttribute('data-mup-cn');
+      var pfx = _ctxMup.getAttribute('data-mup-pfx') || 'CN';
+      _hide();
+      if (!cn) return;
+      var all = document.querySelectorAll('.mup[data-mup-cn="'+cn+'"][data-mup-pfx="'+pfx+'"]');
+      var occIdx = Array.prototype.indexOf.call(all, _ctxMup);
+      webviewApi.postMessage('markMupRenderer', {
+        type: 'mupSetBadgeState',
+        cn:   cn,
+        pfx:  pfx,
+        state: s,
+        occurrenceIndex: occIdx >= 0 ? occIdx : 0
+      });
+    };
+    _stateRow.appendChild(btn);
+    _stateButtons.push(btn);
+  });
+  _menu.appendChild(_stateRow);
+
+  // 現在の状態を .mup-status のテキストから読み取る（例: "[⊕f0+0]" → "⊕f"）
+  function _currentBadgeState(mupEl) {
+    if (!mupEl) return null;
+    var hd = mupEl.querySelector(':scope > .mup-hd');
+    if (!hd) return null;
+    var st = hd.querySelector('.mup-status');
+    if (!st) return null;
+    var m = (st.textContent || '').match(/([⊕⊖⊘])(f?)/);
+    return m ? (m[1] + (m[2] || '')) : null;
+  }
+  function _updateStateHighlight(mupEl) {
+    var cur = _currentBadgeState(mupEl);
+    for (var i = 0; i < _stateButtons.length; i++) {
+      var btn = _stateButtons[i];
+      var isActive = btn.getAttribute('data-state') === cur;
+      if (isActive) {
+        btn.setAttribute('data-active', '1');
+        btn.style.background   = '#1a73e8';
+        btn.style.color        = '#fff';
+        btn.style.borderColor  = '#1a73e8';
+      } else {
+        btn.removeAttribute('data-active');
+        btn.style.background   = '#fafafa';
+        btn.style.color        = '#333';
+        btn.style.borderColor  = '#ccc';
+      }
+    }
+  }
+
+  // ⑤ 膜の中へ移動（WYSIWYGのみ・ヘッダー/フッターemにカーソルがある時表示）
   //    ヘッダーem → body先頭へ。フッターem → body末尾へ。
   var _itemJumpInside = null;
   if (_isWYSIWYG) {
