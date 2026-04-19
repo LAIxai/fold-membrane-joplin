@@ -1,5 +1,10 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v7.12
+// \▼[CN=FOLD] // Fold Membrane - click handler v7.13
 // ─── changelog ───────────────────────────────────────
+// v7.13 2026.04.19(日)pm11:25 「Name:」テキスト入力行を追加。
+//                      Enterで確定→mupSetName送信(index.ts CN=6392)、Escapeは既存ハンドラで
+//                      メニュー閉じ(=キャンセル)。表示時は data-mup-cn で入力欄初期化。
+//                      膜記法を壊す文字[]$改行は前段バリデーションで拒否。
+//                      これで膜の名前・種類・バッジを全てメニュー内で編集可能に。
 // v7.12 2026.04.19(日)pm11:15 メニュー英語化＋行順入替。
 //                      ラベル: エディタ切替→Switch editor / 名前をコピー→Copy name /
 //                       ブロックコードに戻す→Recompile to CodeBlock / バッジ→Badge /
@@ -649,6 +654,10 @@ function _findNearestVisibleMup() {
     if (typeof _updatePfxHighlight === 'function') {
       try { _updatePfxHighlight(mupEl); } catch(_e) {}
     }
+    // v7.13: Name入力欄を現在のcnで初期化
+    if (typeof _updateNameInput === 'function') {
+      try { _updateNameInput(mupEl); } catch(_e) {}
+    }
     _menu.style.display = 'block';
     var mx = Math.min(x, window.innerWidth  - _menu.offsetWidth  - 8);
     var my = Math.min(y, window.innerHeight - _menu.offsetHeight - 8);
@@ -699,6 +708,52 @@ function _findNearestVisibleMup() {
       occurrenceIndex: occIdx >= 0 ? occIdx : 0
     });
   });
+  // ④-0 Name入力行（v7.13）: テキスト入力で膜名(cn)を編集
+  //     Enter → 確定(mupSetName) / Escape → キャンセル(document keydownでメニュー閉じ)
+  //     メッセージ: mupSetName → index.ts CN=6392_SET_NAME が処理。
+  _addSep();
+  var _nameRow = document.createElement('div');
+  _nameRow.style.cssText = 'display:flex;padding:5px 14px 5px 18px;gap:4px;align-items:center;';
+  var _nameLabel = document.createElement('span');
+  _nameLabel.textContent = 'Name:';
+  _nameLabel.style.cssText = 'color:#666;font-size:12px;margin-right:6px;user-select:none;';
+  _nameRow.appendChild(_nameLabel);
+  var _nameInput = document.createElement('input');
+  _nameInput.type = 'text';
+  _nameInput.style.cssText = 'flex:1;min-width:0;border:1px solid #ccc;border-radius:3px;padding:3px 6px;font-size:12px;font-family:monospace;color:#333;background:#fff;';
+  // TinyMCE妨害抑止: 入力欄内のmousedown/clickはメニュー外に伝搬させない
+  _nameInput.onmousedown = function(e) { e.stopPropagation(); };
+  _nameInput.onclick     = function(e) { e.stopPropagation(); };
+  _nameInput.onkeydown = function(e) {
+    // Enterで確定 / Escapeは既存のdocument handlerに任せる(=_hide)
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (!_ctxMup) { _hide(); return; }
+      var cn  = _ctxMup.getAttribute('data-mup-cn');
+      var pfx = _ctxMup.getAttribute('data-mup-pfx') || 'CN';
+      var newName = (_nameInput.value || '').trim();
+      _hide();
+      if (!cn || !newName || newName === cn) return;
+      // 膜記法を壊す文字は禁止([] $ 改行)
+      if (/[\[\]\$\n\r]/.test(newName)) return;
+      var all = document.querySelectorAll('.mup[data-mup-cn="'+cn+'"][data-mup-pfx="'+pfx+'"]');
+      var occIdx = Array.prototype.indexOf.call(all, _ctxMup);
+      webviewApi.postMessage('markMupRenderer', {
+        type: 'mupSetName',
+        cn:      cn,
+        newName: newName,
+        pfx:     pfx,
+        occurrenceIndex: occIdx >= 0 ? occIdx : 0
+      });
+    }
+  };
+  _nameRow.appendChild(_nameInput);
+  _menu.appendChild(_nameRow);
+  function _updateNameInput(mupEl) {
+    if (!mupEl) { _nameInput.value = ''; return; }
+    _nameInput.value = mupEl.getAttribute('data-mup-cn') || '';
+  }
+
   // ④ バッジ状態インラインボタン行（D案 v7.9）: ⊕/⊕f/⊖/⊖f を1クリックで切替
   //    固定表示(f)を書込み/削除する専用UI。現在状態はハイライト表示。
   //    f の実挙動(カウント凍結)は未実装。本UIはソース書換のみ。
