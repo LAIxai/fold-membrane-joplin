@@ -1,4 +1,5 @@
-// \▼[CN=TOC_PANEL] // Fold Membrane - 膜目次パネル v2.6
+// \▼[CN=TOC_PANEL] // Fold Membrane - 膜目次パネル v2.7
+// v2.7 2026.04.20(月)am09:12 depth乗数 6px → 2px/level（1=少なすぎ／6=広すぎの中間）。
 // v2.6 2026.04.20(月)am09:10 depth乗数を 6px に戻し、線〜文字のマージン 8px → 1px。
 //       v2.5は「線の間隔」を1pxにしてしまったが、ユーザの意図は「線と文字の距離」を1pxにすること。
 // v2.5 2026.04.20(月)am08:50 depth乗数 6px → 1px/level に削減（誤解・v2.6で訂正）。
@@ -262,11 +263,12 @@
       return;
     }
 
+    // v2.7: depth乗数 6px → 2px/level（1=少なすぎ／6=広すぎの中間）。
     // v2.6: depth乗数を6pxに戻し、bar padding-left 8px → 1px（線〜文字距離を詰める）。
     // v2.4: 色バー(border-left)を深さに応じてインデントする。
     //        外側 row = 背景/ボーダー下線、内側 bar = margin-leftで位置決め+border-left=色バー。
     //        これで編集エリアの膜左罫線と同じ見た目になる（左端に張りつかない）。
-    var _INDENT_PER_LEVEL = 6;
+    var _INDENT_PER_LEVEL = 2;
     membranes.forEach(function(m) {
       var isActive = (m.cn === _activeCN);
       var row = document.createElement('div');
