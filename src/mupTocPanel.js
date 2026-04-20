@@ -1,6 +1,7 @@
-// \▼[CN=TOC_PANEL] // Fold Membrane - 膜目次パネル v2.5
-// v2.5 2026.04.20(月)am08:50 depth乗数 6px → 1px/level に削減（ユーザテスト提案）。
-//       線が独立してインデントされるので、僅かなズレでも深さが読める。
+// \▼[CN=TOC_PANEL] // Fold Membrane - 膜目次パネル v2.6
+// v2.6 2026.04.20(月)am09:10 depth乗数を 6px に戻し、線〜文字のマージン 8px → 1px。
+//       v2.5は「線の間隔」を1pxにしてしまったが、ユーザの意図は「線と文字の距離」を1pxにすること。
+// v2.5 2026.04.20(月)am08:50 depth乗数 6px → 1px/level に削減（誤解・v2.6で訂正）。
 // v2.4 2026.04.20(月)am00:18 色バー(border-left)を深さに応じてインデント化。
 //       外側row=背景/下線、内側bar=margin-left+border-left。編集エリアの膜左罫線と見た目が揃う。
 //       文字は線から常に8px固定（padding-left）。線の位置で深さが分かる（ユーザ指定）。
@@ -261,11 +262,11 @@
       return;
     }
 
-    // v2.5: depth乗数 6px → 1px/level に削減（線位置の差だけで読める）。
+    // v2.6: depth乗数を6pxに戻し、bar padding-left 8px → 1px（線〜文字距離を詰める）。
     // v2.4: 色バー(border-left)を深さに応じてインデントする。
     //        外側 row = 背景/ボーダー下線、内側 bar = margin-leftで位置決め+border-left=色バー。
     //        これで編集エリアの膜左罫線と同じ見た目になる（左端に張りつかない）。
-    var _INDENT_PER_LEVEL = 1;
+    var _INDENT_PER_LEVEL = 6;
     membranes.forEach(function(m) {
       var isActive = (m.cn === _activeCN);
       var row = document.createElement('div');
@@ -281,7 +282,7 @@
       var bar = document.createElement('div');
       bar.style.cssText = [
         'margin-left:' + (m.depth * _INDENT_PER_LEVEL) + 'px',
-        'padding:5px 10px 5px 8px',
+        'padding:5px 10px 5px 1px',
         'border-left:3px solid ' + (isActive ? m.color : 'transparent'),
         'display:flex','align-items:center','gap:5px',
         'font-size:12px','line-height:1.5'
