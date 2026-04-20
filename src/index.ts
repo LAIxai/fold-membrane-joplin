@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.90
- * @date    2026.04.19(日)pm11:55
+ * @version 8.91
+ * @date    2026.04.20(月)am09:35
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -224,6 +224,7 @@
  *   v8.88 [2026.04.19(日)pm10:55] CN=5128_SET_PFX 新設。mupFold.js v7.11 のプレフィックスインラインボタン行(種類: [CN][H1][H2][H3])から呼ばれる。開き膜の [OLDPFX=cn] と対応する閉じ膜の両方を depth追跡で特定し [NEWPFX=cn] に置換(cn名は保持)。バリデーション: oldPfx/newPfx ともに /^(?:CN|H[1-3])$/ のホワイトリスト。バッジ状態切替と同じ「1クリックで切替・現在値ハイライト」のUX。これで膜の名前・バッジ状態・プレフィックス全てがWYSIWYGから編集可能になりマークダウンモードの出番がほぼ消失。
  *   v8.89 [2026.04.19(日)pm11:25] CN=6392_SET_NAME 新設。mupFold.js v7.13 のName入力行(Enterで確定)から呼ばれる。開き膜と対応閉じ膜の両方で [pfx=oldName] → [pfx=newName] に置換。pfxホワイトリスト + newNameの[] $ 改行禁止バリデーション。replace時の$1/$2混入を防ぐため newName の $ を $$ にエスケープ。これで膜の名前編集もモード切替なしでWYSIWYGから可能に。
  *   v8.90 [2026.04.19(日)pm11:55] CN=2947_SET_MTYPE 新設。mupFold.js v7.15 の m/M ボタンから呼ばれる。開き膜 ▼m[...]⇄M▼[...] / 閉じ膜 ▲m[...]⇄M▲[...] で形式を切替え、_M(legacy)形式も canonical な m/M に正規化する。markdownItRenderer v6.9 で data-mup-mtype 属性を出力し、mupFold.js が直接参照。M(不可侵膜)の実挙動(編集抑制)は別課題。
+ *   v8.91 [2026.04.20(月)am09:35] (1) CN=7492 _mupMakeMembrane の body デフォルトを空→🗒️ に変更。WYSIWYGでCmd+S→Repairすると空膜が消える問題を回避し、中に必ず入れる状態を保証。(2) ツールメニュー #1(mupInsertV) #2(mupInsertH) をツールバーボタンと同じ _mupInsertMembraneWrap 経由に統一。選択包み／$記法コードブロック挿入／CN/H1 pfx区別 等の仕様が全て揃う。ユーザ指示: 膜挿入は全て同じ処理を通すべき。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -1962,18 +1963,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
       name: 'mupInsertV',
       label: 'Insert Membrane ▼▲',
       iconName: 'fas fa-caret-down',
-      execute: async () => {
-        await insertTemplate('\n$▼m[CN=new]$ // comment [⊕0+0]\n\n$▲m[CN=new]$\n');
-      },
+      // v8.91: ツールバーボタンと同じ _mupInsertMembraneWrap に統一。
+      //   Markdown/WYSIWYG両モードで「選択を包む／空なら🗒️を入れる」共通処理。
+      execute: async () => { await _mupInsertMembraneWrap('V'); },
     });
 
     await joplin.commands.register({
       name: 'mupInsertH',
       label: 'Insert Membrane ▶◀ (default fold)',
       iconName: 'fas fa-caret-right',
-      execute: async () => {
-        await insertTemplate('\n$▶m[CN=new]$ // comment [⊕0+0]\n\n$◀m[CN=new]$\n');
-      },
+      // v8.91: ツールバーボタンと同じ _mupInsertMembraneWrap に統一。
+      execute: async () => { await _mupInsertMembraneWrap('H'); },
     });
 
     // \▼[CN=7492_toolbarMembrane] // ツールバーボタン用: 選択範囲を膜で包む
@@ -1992,7 +1992,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
       const close = kind === 'V' ? '▲m' : '◀m';
       const pfx   = kind === 'V' ? 'H1' : 'CN';
       const name  = `new_${id}`;
-      const body  = (content && content.length > 0) ? content : '';
+      // CN=7492 v8.91: 中身が空だとWYSIWYGでCmd+S→Repair後に膜が消えるので、
+      //   プレースホルダ `🗒️` を入れて「中に入れる」状態を保証する。
+      const body  = (content && content.length > 0) ? content : '🗒️';
       const $o = dollar ? '$' : '';
       return `${$o}${open}[${pfx}=${name}]${$o} // comment [⊕0+0]\n\n${body}\n\n${$o}${close}[${pfx}=${name}]${$o}`;
     }
