@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.91
- * @date    2026.04.20(月)am09:35
+ * @version 8.92
+ * @date    2026.04.24(金)am08:40
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -225,6 +225,7 @@
  *   v8.89 [2026.04.19(日)pm11:25] CN=6392_SET_NAME 新設。mupFold.js v7.13 のName入力行(Enterで確定)から呼ばれる。開き膜と対応閉じ膜の両方で [pfx=oldName] → [pfx=newName] に置換。pfxホワイトリスト + newNameの[] $ 改行禁止バリデーション。replace時の$1/$2混入を防ぐため newName の $ を $$ にエスケープ。これで膜の名前編集もモード切替なしでWYSIWYGから可能に。
  *   v8.90 [2026.04.19(日)pm11:55] CN=2947_SET_MTYPE 新設。mupFold.js v7.15 の m/M ボタンから呼ばれる。開き膜 ▼m[...]⇄M▼[...] / 閉じ膜 ▲m[...]⇄M▲[...] で形式を切替え、_M(legacy)形式も canonical な m/M に正規化する。markdownItRenderer v6.9 で data-mup-mtype 属性を出力し、mupFold.js が直接参照。M(不可侵膜)の実挙動(編集抑制)は別課題。
  *   v8.91 [2026.04.20(月)am09:35] (1) CN=7492 _mupMakeMembrane の body デフォルトを空→🗒️ に変更。WYSIWYGでCmd+S→Repairすると空膜が消える問題を回避し、中に必ず入れる状態を保証。(2) ツールメニュー #1(mupInsertV) #2(mupInsertH) をツールバーボタンと同じ _mupInsertMembraneWrap 経由に統一。選択包み／$記法コードブロック挿入／CN/H1 pfx区別 等の仕様が全て揃う。ユーザ指示: 膜挿入は全て同じ処理を通すべき。
+ *   v8.92 [2026.04.24(金)am08:40] CN=4927_FUSED_PREFIX 新設。TinyMCEが「前段落の末尾」と「次の膜タグ行」を同一行に融合させる破損パターンに対応。例として span[color]="ここ" + span[color]="▼" + plain " new_2112 ASTER SLASH-SLASH comment [⊕0+0]" の順に繋がる形。矢印を含まないtext spans + 矢印spanの融合を検出し、前段落部分を前行へ切り出す。INLINE_ARROW 直前で実行。併せて INLINE_ARROW の regex を緩和し、閉じアスタリスクが欠落した "ASTER SLASH-SLASH comment" も捕捉。膜を増やすほど壊れやすい症状(v0.9.152_0831 ユーザ報告、4つ目・5つ目を縦膜で追加→Cmd+Sで4つ壊滅)の根本対策。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -421,12 +422,41 @@ function repairMupSpan(body: string): string {
   fixed = fixed.replace(/`\s*([⇄⇒]+)\s*`/g, '');
   // \▲[CN=5492_repairMupSpan.BADGE_TICK]
 
+  // \▼[CN=4927_repairMupSpan.FUSED_PREFIX] // v8.92 前段落融合の分離
+  // TinyMCEは「前段落の末尾」と「次の膜タグ行」を同一行に融合することがある:
+  //   <span style="color:rgb(155, 111, 196);">ここ</span><span style="color: #9b6fc4;">▼</span> new_2112 *// comment [⊕0+0]
+  //   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 前段落の残骸
+  //                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 本来のタグ行
+  // この状態だとINLINE_ARROWの `^<span[^>]*>[▼▶]` アンカーが外れて修復できず、
+  // 4〜5個の膜を溜めるほど発生率が上がる（ユーザー報告v0.9.152_0831）。
+  // 矢印(▼▶▲◀)を含まない text span + 矢印span の融合を検出し、前段落部分を別行として切り出す。
+  {
+    const _fpLines = fixed.split('\n');
+    const _fpOut: string[] = [];
+    const RE_FUSED_PFX = /^((?:<span[^>]*>[^<>▼▶▲◀\n]*<\/span>[ \t]*)+)(<span[^>]*>[▼▶▲◀]<\/span>.*)$/;
+    for (const line of _fpLines) {
+      const m = RE_FUSED_PFX.exec(line);
+      if (m) {
+        const prefixText = m[1].replace(/<\/?span[^>]*>/gi, '').replace(/[ \t]+/g, ' ').trim();
+        if (prefixText) _fpOut.push(prefixText);
+        _fpOut.push(m[2]);
+      } else {
+        _fpOut.push(line);
+      }
+    }
+    fixed = _fpOut.join('\n');
+  }
+  // \▲[CN=4927_repairMupSpan.FUSED_PREFIX]
+
   // \▼[CN=8276_repairMupSpan.INLINE_ARROW] // 色付きspan+plain text型の破損開き膜を修復
   // TinyMCEはH1/H2/H3/CN膜ヘッダーを以下のようにシリアライズすることがある:
   //   <span style="color:#9b6fc4;">▼</span> new_3245 */ comment* [⊕0+0]
   // (mup-pfx-* クラスが失われ、nameが<span>から出て plain text になるケース)
   // 閉じ膜 $▲m[…]$ / $▲M[…]$ を手がかりに tag letter と pfx を逆引きして復元する。
   // v8.81 [2026.04.18(土)pm07:35] tag letter (m/M) も逆引き対象に追加。不可侵膜 M 対応。
+  // v8.92 [2026.04.24(金)am08:40] `*//` 片割れ対応。閉じ `*` が欠けた `*// comment` も
+  //                                捕捉できるよう `\*?` + `\/\/` 必須に調整。badge `[` を
+  //                                comment に取り込まない `[^*\n\[]` に変更。
   {
     const _iaLines = fixed.split('\n');
     // 閉じ膜のマップ: cn → {tag, pfx, lineIdx}
@@ -469,8 +499,9 @@ function repairMupSpan(body: string): string {
       }
       // \▲[CN=8276_FOLDED_FUSED]
 
-      // pattern: [<span…>]▼[/</span>] space name [… */comment*] [ [⊕…] ]
-      const m = /^<span[^>]*>([▼▶])<\/span>\s+(\S+)(?:\s+\*\s*(?:\/\/)?\s*([^*\n]*?)\s*\*)?\s*(\[[⊕⊖⊘][^\]\n]*\])?\s*$/.exec(line);
+      // pattern: [<span…>]▼[/</span>] space name [… *?// comment *?] [ [⊕…] ]
+      // v8.92: 閉じ `*` が欠けた `*// comment` も捕捉。`//` は必須。badge `[` を除外。
+      const m = /^<span[^>]*>([▼▶])<\/span>\s+(\S+)(?:\s+\*?\s*\/\/\s*([^*\n\[]*?)\s*\*?)?\s*(\[[⊕⊖⊘][^\]\n]*\])?\s*$/.exec(line);
       if (!m) continue;
       const arrow = m[1]; const cn = m[2].trim();
       const comment = m[3] ? m[3].trim() : '';
