@@ -1,13 +1,15 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 7.1
- * @date    2026.04.24(金)pm07:20
+ * @version 7.2
+ * @date    2026.04.24(金)pm07:50
  * @desc    v7.1 [2026.04.24(金)pm07:20]: 新記法を styled-div (.mup-nc) で出力。
  *                convertNewNotation 廃止。parseNewNotationBlocks + buildMupNcMap で
  *                .mup-nc-hd/.mup-nc-bd/.mup-nc-ft 構造を生成。
  *                hd/ft に生ソーステキストを埋込むことで Turndown 往復でソース保全。
  *                mupFold.js v7.16 の .mup-nc-hd クリックで開閉トグル。
+ * @desc    v7.2 [2026.04.24(金)pm07:50]: .mup-nc-ft を .mup-nc-bd 内側に移動（旧膜 .mup-ft と同構造）。
+ *                折り畳み時に ft が bd と一緒に隠れるよう修正。
  * @desc    v6.9 [2026.04.19(日)pm11:55]: 膜形式(mtype)検出＋DOM公開。
  *                RE_O capture(1)がm-suffix, (3)がM-prefix, (2)が_M legacy。
  *                b.mtype として保持し <div class="mup" data-mup-mtype="m|M|_M"> に出力。
@@ -155,14 +157,15 @@ function buildMupNcMap(ncBlocks, rawLines){
       +'<div class="mup-nc-bd" style="padding:4px 8px 4px 1px;'+bodyDisplay+'">';
     map[b.startLine]=openHtml;
 
-    // 閉じ: .mup-nc-bd を閉じ、.mup-nc-ft に閉じ膜ソース行
+    // 閉じ: .mup-nc-bd 内に .mup-nc-ft を置き、共に折畳み時に隠れる
+    // (.mup-ft が .mup-bd 内側にある旧記法と同じ構造)
     if(b.endLine>=0){
       var srcFt=escH(b.srcCloseLine||'');
-      map[b.endLine]='</div>'  // close mup-nc-bd
-        +'<div class="mup-nc-ft"'
+      map[b.endLine]='<div class="mup-nc-ft"'
         +' style="padding:2px 8px;font-size:0.8em;font-family:monospace;color:'+col+';opacity:0.7">'
         +srcFt
         +'</div>'
+        +'</div>'  // close mup-nc-bd
         +'</div>';  // close mup-nc
     }
   });

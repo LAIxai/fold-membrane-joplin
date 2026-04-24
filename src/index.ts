@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.95
- * @date    2026.04.24(金)pm07:35
+ * @version 8.96
+ * @date    2026.04.24(金)pm07:52
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -229,6 +229,7 @@
  *   v8.93 [2026.04.24(金)pm01:48] markdownItRenderer v7.0 と連動。コメント型新記法 v0.6 の読み取りサポートを renderer 側で追加（Stage 1）。index.ts 側は今回無改修—新記法 "ASTER ASTER brace ▼mCN=name🟢 ASTER ASTER comment paren ⊕0+0 paren close brace" はパース時に内部で旧記法 ▼m[CN=name]$ に変換されて既存ロジックに流れる。不可侵膜M(大文字)も形式だけ先行実装(▼MCN→M▼[CN=...])。書込み側(insertTemplate/SetName/SetMtype)は従来の旧記法を出力—Stage 2 で切替予定。
  *   v8.94 [2026.04.24(金)pm02:05] INLINE_ARROW の regex をエスケープ済みアスタリスク (BACKSLASH-ASTER) 対応に拡張。イタリック片割れの ASTER が Markdown 保存時に BACKSLASH-ASTER になる破損パターン (v0.9.153_0152 ユーザ報告、単独膜の名前変更後に m[CN=...]$ 構造が完全消失し、残った BACKSLASH-ASTER-SLASH-SLASH comment で INLINE_ARROW が失敗していた)を救済。開き・閉じ両方のイタリック位置に BACKSLASH-QUESTION を追加。
  *   v8.95 [2026.04.24(金)pm07:35] CN=7492 _mupMakeMembrane をコメント型新記法に変更。// {▼mPFX=name🟢 // comment (⊕0+0)} 形式で挿入。WYSIWYG はコードブロックラップ不要になり、<p> タグで直接挿入に刷新。Markdown/WYSIWYG 共に同一テンプレートを使用。
+ *   v8.96 [2026.04.24(金)pm07:52] v8.95 の3バグ修正。(1)🟢を新規テンプレートから削除（新規膜はアクティブでない）。(2) WYSIWYG 挿入を joplin-editable コードブロック方式に戻す→Cmd+S で CN=3094 が新記法コードフェンスを解放。(3) CN=3094 を新記法 // {▼m... 対応に拡張。renderer v7.2 で .mup-nc-ft を .mup-nc-bd 内側に移動（折り畳み時に閉じ膜も隠れる）。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -894,8 +895,9 @@ function repairMupSpan(body: string): string {
   fixed = fixed.replace(
     /^```[^\n]*\r?\n([\s\S]*?)\r?\n[ \t]*```[ \t]*$/gm,
     function(match: string, inner: string) {
-      if (/(?:[▼▶▲◀]m|M[▼▶▲◀])\[(?:CN|H[1-3])=|(?:🔖m|M🔖)\[/.test(inner)) {
-        // 膜記法を含む → コードフェンスのみ除去
+      // 旧記法 OR 新記法コメント型 を含む → コードフェンスのみ除去
+      if (/(?:[▼▶▲◀]m|M[▼▶▲◀])\[(?:CN|H[1-3])=|(?:🔖m|M🔖)\[/.test(inner) ||
+          /\/\/\s*\{[▼▶▲◀][mM](?:CN|H[1-3])=/.test(inner)) {
         return inner;
       }
       return match;
@@ -904,6 +906,9 @@ function repairMupSpan(body: string): string {
   // ③ 孤立した``` 行が膜の直前・直後にある場合も削除（ペア不成立の残骸）
   fixed = fixed.replace(/^```[^\n]*\r?\n([ \t]*(?:[▼▶▲◀]m|M[▼▶▲◀]))/gm, '$1');   // ```\n▼m → ▼m
   fixed = fixed.replace(/((?:[▲◀]m|M[▲◀])\[[^\]\n]+\])\r?\n```[ \t]*$/gm, '$1'); // ▲m\n``` → ▲m
+  // 新記法: 孤立``` が // {▼m... の直前・直後にある場合も削除
+  fixed = fixed.replace(/^```[^\n]*\r?\n([ \t]*\/\/\s*\{[▼▶])/gm, '$1');        // ```\n// {▼m → // {▼m
+  fixed = fixed.replace(/(\/\/\s*\{[▲◀][mM][^\n]+\})\r?\n```[ \t]*$/gm, '$1'); // // {▲m}\n``` → // {▲m}
   // \▲[CN=3094_repairMupSpan.CODEFENCE_UNWRAP]
 
   // \▼[CN=1920_repairMupSpan.BACKSLASH] // バックスラッシュ増殖修復（Joplinの悪名高きバグ対策）
@@ -2021,17 +2026,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
       return String(d.getMinutes()).padStart(2,'0') + String(d.getSeconds()).padStart(2,'0');
     }
     function _mupMakeMembrane(kind: 'V' | 'H', content: string): string {
-      // v8.95: コメント型新記法 // {▼mPFX=name🟢 // comment (⊕0+0)}
-      // Markdown/WYSIWYG 共通。TinyMCEはプレーンテキスト行を破壊しないため
-      // コードブロックラップ不要。Turndown往復でソース保全。
+      // v8.96: コメント型新記法。🟢なし（新規膜はアクティブでない）。
+      // Markdown: そのまま挿入。
+      // WYSIWYG: ``` コードブロックに包んで挿入 → Cmd+S で CN=3094 が解放 → renderer が .mup-nc 描画。
       const id = _mupTimeId();
       const openArrow  = kind === 'V' ? '▼' : '▶';
       const closeArrow = kind === 'V' ? '▲' : '◀';
       const pfx   = kind === 'V' ? 'H1' : 'CN';
       const name  = `new_${id}`;
-      // 中身が空だとWYSIWYGでCmd+S→Repair後に膜が消えるので 🗒️ を保証
+      // 中身が空だと折り畳み時に閉じ膜だけ残って空になるので 🗒️ を保証
       const body  = (content && content.length > 0) ? content : '🗒️';
-      return `// {${openArrow}m${pfx}=${name}🟢 // comment (⊕0+0)}\n\n${body}\n\n// {${closeArrow}m${pfx}=${name}🟢}`;
+      return `// {${openArrow}m${pfx}=${name} // comment (⊕0+0)}\n\n${body}\n\n// {${closeArrow}m${pfx}=${name}}`;
     }
     async function _mupInsertMembraneWrap(kind: 'V' | 'H') {
       const isMarkdown = await isMarkdownMode();
@@ -2052,24 +2057,30 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
           } catch(_e2) {}
         }
       } else {
-        // WYSIWYG: コメント型新記法はプレーンテキストなのでコードブロック不要。
-        // <p>行として挿入 → Turndown が // {▼m...} を保持したまま保存。
-        // renderer v7.1 が次のsyncで .mup-nc styled-div として描画する。
-        const toHtmlP = (line: string) => {
-          if (!line) return '<p><br></p>';
-          const esc = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-          return `<p>${esc}</p>`;
-        };
+        // WYSIWYG: Joplin コードブロック形式で挿入。
+        // Cmd+S → CN=3094_CODEFENCE_UNWRAP が新記法を認識してフェンスを外す
+        //       → renderer v7.2 が .mup-nc styled-div として描画。
+        const esc = membrane
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
         const html =
           '<p><br></p>' +
-          membrane.split('\n').map(toHtmlP).join('') +
+          '<div class="joplin-editable">' +
+            '<pre class="joplin-source"' +
+            ' data-joplin-language=""' +
+            ' data-joplin-source-open="\`\`\`&#10;"' +
+            ' data-joplin-source-close="&#10;\`\`\`">' +
+            esc +
+            '</pre>' +
+            '<pre class="hljs"><code>' + esc + '</code></pre>' +
+          '</div>' +
           '<p><br></p>';
         try {
           await joplin.commands.execute('editor.execCommand', {
             name: 'mceInsertContent', value: html,
           });
         } catch(_e) {
-          // fallback: replaceSelection
           try {
             await joplin.commands.execute('replaceSelection', '\n\n' + membrane + '\n\n');
           } catch(_e2) {}
