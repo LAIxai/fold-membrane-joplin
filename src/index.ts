@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.93
- * @date    2026.04.24(金)pm01:48
+ * @version 8.94
+ * @date    2026.04.24(金)pm02:05
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -227,6 +227,7 @@
  *   v8.91 [2026.04.20(月)am09:35] (1) CN=7492 _mupMakeMembrane の body デフォルトを空→🗒️ に変更。WYSIWYGでCmd+S→Repairすると空膜が消える問題を回避し、中に必ず入れる状態を保証。(2) ツールメニュー #1(mupInsertV) #2(mupInsertH) をツールバーボタンと同じ _mupInsertMembraneWrap 経由に統一。選択包み／$記法コードブロック挿入／CN/H1 pfx区別 等の仕様が全て揃う。ユーザ指示: 膜挿入は全て同じ処理を通すべき。
  *   v8.92 [2026.04.24(金)am08:40] CN=4927_FUSED_PREFIX 新設。TinyMCEが「前段落の末尾」と「次の膜タグ行」を同一行に融合させる破損パターンに対応。例として span[color]="ここ" + span[color]="▼" + plain " new_2112 ASTER SLASH-SLASH comment [⊕0+0]" の順に繋がる形。矢印を含まないtext spans + 矢印spanの融合を検出し、前段落部分を前行へ切り出す。INLINE_ARROW 直前で実行。併せて INLINE_ARROW の regex を緩和し、閉じアスタリスクが欠落した "ASTER SLASH-SLASH comment" も捕捉。膜を増やすほど壊れやすい症状(v0.9.152_0831 ユーザ報告、4つ目・5つ目を縦膜で追加→Cmd+Sで4つ壊滅)の根本対策。
  *   v8.93 [2026.04.24(金)pm01:48] markdownItRenderer v7.0 と連動。コメント型新記法 v0.6 の読み取りサポートを renderer 側で追加（Stage 1）。index.ts 側は今回無改修—新記法 "ASTER ASTER brace ▼mCN=name🟢 ASTER ASTER comment paren ⊕0+0 paren close brace" はパース時に内部で旧記法 ▼m[CN=name]$ に変換されて既存ロジックに流れる。不可侵膜M(大文字)も形式だけ先行実装(▼MCN→M▼[CN=...])。書込み側(insertTemplate/SetName/SetMtype)は従来の旧記法を出力—Stage 2 で切替予定。
+ *   v8.94 [2026.04.24(金)pm02:05] INLINE_ARROW の regex をエスケープ済みアスタリスク (BACKSLASH-ASTER) 対応に拡張。イタリック片割れの ASTER が Markdown 保存時に BACKSLASH-ASTER になる破損パターン (v0.9.153_0152 ユーザ報告、単独膜の名前変更後に m[CN=...]$ 構造が完全消失し、残った BACKSLASH-ASTER-SLASH-SLASH comment で INLINE_ARROW が失敗していた)を救済。開き・閉じ両方のイタリック位置に BACKSLASH-QUESTION を追加。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -500,9 +501,11 @@ function repairMupSpan(body: string): string {
       }
       // \▲[CN=8276_FOLDED_FUSED]
 
-      // pattern: [<span…>]▼[/</span>] space name [… *?// comment *?] [ [⊕…] ]
+      // pattern: [<span…>]▼[/</span>] space name [… \?*?// comment \?*?] [ [⊕…] ]
       // v8.92: 閉じ `*` が欠けた `*// comment` も捕捉。`//` は必須。badge `[` を除外。
-      const m = /^<span[^>]*>([▼▶])<\/span>\s+(\S+)(?:\s+\*?\s*\/\/\s*([^*\n\[]*?)\s*\*?)?\s*(\[[⊕⊖⊘][^\]\n]*\])?\s*$/.exec(line);
+      // v8.94: `\*` (escape済みアスタリスク) にも対応。イタリックが片割れになり Markdown が
+      //        `*` を `\*` にエスケープした状態で保存されるケース (v0.9.153_0152 ユーザ報告)。
+      const m = /^<span[^>]*>([▼▶])<\/span>\s+(\S+)(?:\s+\\?\*?\s*\/\/\s*([^*\n\[]*?)\s*\\?\*?)?\s*(\[[⊕⊖⊘][^\]\n]*\])?\s*$/.exec(line);
       if (!m) continue;
       const arrow = m[1]; const cn = m[2].trim();
       const comment = m[3] ? m[3].trim() : '';
