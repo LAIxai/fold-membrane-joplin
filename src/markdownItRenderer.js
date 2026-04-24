@@ -1,13 +1,13 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 7.0
- * @date    2026.04.24(金)am10:16
- * @desc    v7.0 [2026.04.24(金)am10:16]: コメント型新記法 v0.6 読み取りサポート。
- *                // {▼mCN=name🟢 // comment (⊕0+0)} 形式をパース直前に内部で旧記法に
- *                変換（convertNewNotation）し、以降の既存ロジックで処理する。
- *                新記法はプレーンテキスト行のみで構成されるためTinyMCE往復で破壊されず、
- *                修復チェーン不要。Stage 1: 読み取りのみ（書き込み側は従来通り旧記法）。
+ * @version 7.1
+ * @date    2026.04.24(金)pm07:20
+ * @desc    v7.1 [2026.04.24(金)pm07:20]: 新記法を styled-div (.mup-nc) で出力。
+ *                convertNewNotation 廃止。parseNewNotationBlocks + buildMupNcMap で
+ *                .mup-nc-hd/.mup-nc-bd/.mup-nc-ft 構造を生成。
+ *                hd/ft に生ソーステキストを埋込むことで Turndown 往復でソース保全。
+ *                mupFold.js v7.16 の .mup-nc-hd クリックで開閉トグル。
  * @desc    v6.9 [2026.04.19(日)pm11:55]: 膜形式(mtype)検出＋DOM公開。
  *                RE_O capture(1)がm-suffix, (3)がM-prefix, (2)が_M legacy。
  *                b.mtype として保持し <div class="mup" data-mup-mtype="m|M|_M"> に出力。
@@ -75,50 +75,98 @@ var RE_LINK_ME    = /Me⇒|⇒Me/;  // Me結合記法: {A}⇒Me⇒{B} / Me⇒{B}
 function escH(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 // \▲[CN=RENDERER.UTIL]
 
-// \▼[CN=RENDERER.NEW_NOTATION] // コメント型新記法 v0.6 読み取りサポート (v7.0)
+// \▼[CN=RENDERER.NEW_NOTATION] // コメント型新記法 v0.7 styled-div出力 (v7.1)
 // ──────────────────────────────────────────────────────────────
 // 通常膜:     // {▼mCN=name🟢 // comment (⊕0+0)}    // m=小文字 (mutable)
 // 不可侵膜M:  // {▼MCN=name🟢 // comment (⊕0+0)}    // M=大文字 (inviolable, 形式のみ)
 // 閉じ膜:     // {▲mCN=name🟢 // comment2}         // {▲MCN=name🟢}
 // ──────────────────────────────────────────────────────────────
-// 方針: パース直前に内部で旧記法に変換し、以降の既存ロジックを無改修で再利用する。
-//   通常:    ▼mCN=name🟢 // c (⊕0+0) → ▼m[CN=name]🟢 // c [⊕0+0]      (mtype='m')
-//   不可侵:  ▼MCN=name🟢 // c (⊕0+0) → M▼[CN=name]🟢 // c [⊕0+0]      (mtype='M')
-// ユーザが編集するソース文字列は一切書き換えない（表示専用前処理）。
-// 新記法はプレーンテキスト行なのでTinyMCE往復で破壊されず、修復チェーン不要。
-// M(不可侵)の実挙動（編集抑止など）は未実装—形式だけ先行確保。
+// v0.7 方針: renderer は convertNewNotation (旧記法変換) を呼ばず、
+// .mup-nc styled-div を出力する。hd/ft に生ソーステキストを埋込むことで
+// Turndown が「div のテキスト内容」としてそのまま保存 → 往復でソース保全。
+//
+// <div class="mup-nc">
+//   <div class="mup-nc-hd">// {▼mCN=name🟢 // hello (⊕0+0)}</div>
+//   <div class="mup-nc-bd">（本文 markdown-it 処理）</div>
+//   <div class="mup-nc-ft">// {▲mCN=name🟢}</div>
+// </div>
+//
+// Turndown 往復: hd/ft の textContent = 元の記法行 → ソース保全 ✅
+// mupFold.js: .mup-nc-hd クリックで .mup-nc-bd を toggle ✅
 var RE_O_NEW = /^[ \t]*\/\/\s*\{([▼▶])([mM])(CN|H[1-3])=([^🟢{}\s]+)(🟢)?(?:\s*\/\/\s*([^{}]*?))?\s*\}\s*$/;
 var RE_C_NEW = /^[ \t]*\/\/\s*\{([▲◀])([mM])(CN|H[1-3])=([^🟢{}\s]+)(🟢)?(?:\s*\/\/\s*([^{}]*?))?\s*\}\s*$/;
 
-function convertNewNotation(src){
-  // 早期リターン: 新記法の兆候がなければ何もしない（高速パス）
-  if(src.indexOf('{▼')<0 && src.indexOf('{▶')<0 && src.indexOf('{▲')<0 && src.indexOf('{◀')<0) return src;
-  var lines = src.split('\n');
-  var changed = false;
-  for(var i=0; i<lines.length; i++){
-    var mo = RE_O_NEW.exec(lines[i]);
+// parseNewNotationBlocks: 新記法行 → ブロック記述子の配列
+function parseNewNotationBlocks(rawLines){
+  var blocks=[], stack=[];
+  for(var i=0; i<rawLines.length; i++){
+    var mo=RE_O_NEW.exec(rawLines[i]);
+    var mc=RE_C_NEW.exec(rawLines[i]);
     if(mo){
-      // mo[1]=arrow, mo[2]=m|M, mo[3]=CN|H[1-3], mo[4]=name, mo[5]=🟢?, mo[6]=inner
-      var arrow=mo[1], type=mo[2], pfx=mo[3], cn=mo[4], active=mo[5]||'';
-      var inner = (mo[6] || '').replace(/\(([⊕⊖⊘][^)]*)\)/g, '[$1]').trim();
-      var tag = (type==='M') ? ('M'+arrow+'['+pfx+'='+cn+']')
-                             : (arrow+'m['+pfx+'='+cn+']');
-      lines[i] = tag + active + (inner ? ' // ' + inner : '');
-      changed = true;
-      continue;
-    }
-    var mc = RE_C_NEW.exec(lines[i]);
-    if(mc){
-      var arrow2=mc[1], type2=mc[2], pfx2=mc[3], cn2=mc[4], active2=mc[5]||'';
-      var inner2 = (mc[6] || '').replace(/\(([⊕⊖⊘][^)]*)\)/g, '[$1]').trim();
-      var tag2 = (type2==='M') ? ('M'+arrow2+'['+pfx2+'='+cn2+']')
-                               : (arrow2+'m['+pfx2+'='+cn2+']');
-      lines[i] = tag2 + active2 + (inner2 ? ' // ' + inner2 : '');
-      changed = true;
-      continue;
+      // mo[1]=▼|▶  mo[2]=m|M  mo[3]=CN|H[1-3]  mo[4]=name  mo[5]=🟢?  mo[6]=inner
+      var inner=(mo[6]||'').replace(/\(([⊕⊖⊘][^)]*?)\)/g,'[$1]');
+      var parsed=parseStatus(inner);
+      var b={sym:mo[1], mtype:mo[2], pfx:mo[3], cn:mo[4],
+             startLine:i, endLine:-1, depth:stack.length,
+             status:parsed.status,
+             srcOpenLine:rawLines[i].replace(/^[ \t]*/,'')};
+      stack.push(b); blocks.push(b);
+    } else if(mc){
+      var cpfx=mc[3], ccn=mc[4];
+      for(var k=stack.length-1; k>=0; k--){
+        if(stack[k].pfx===cpfx && stack[k].cn===ccn){
+          stack[k].endLine=i;
+          stack[k].srcCloseLine=rawLines[i].replace(/^[ \t]*/,'');
+          stack.splice(k,1); break;
+        }
+      }
     }
   }
-  return changed ? lines.join('\n') : src;
+  return blocks;
+}
+
+// buildMupNcMap: .mup-nc styled-div HTML を生成（source text を hd/ft に埋込）
+function buildMupNcMap(ncBlocks, rawLines){
+  var map={};
+  ncBlocks.forEach(function(b){
+    var col=DEPTH_COLORS[b.depth%DEPTH_COLORS.length];
+    // 初期表示状態をバッジから決定
+    var st=b.status;
+    var startOpen=(b.sym==='▼');
+    if(st){
+      if(st.state==='⊕') startOpen=true;
+      else if(st.state==='⊖'||st.state==='⊘') startOpen=false;
+    }
+    var bodyDisplay=startOpen?'':'display:none';
+    var srcHd=escH(b.srcOpenLine);
+
+    // 開始: .mup-nc-hd に生ソース行、.mup-nc-bd を開く
+    var openHtml='<div class="mup-nc"'
+      +' data-mup-pfx="'+escH(b.pfx)+'"'
+      +' data-mup-cn="'+escH(b.cn)+'"'
+      +' data-mup-sym="'+escH(b.sym==='▼'?'v':'h')+'"'
+      +' data-mup-mtype="'+escH(b.mtype)+'"'
+      +' style="border-left:3px solid '+col+';margin:4px 0">'
+      +'<div class="mup-nc-hd"'
+      +' style="padding:3px 8px;font-size:0.85em;cursor:pointer;font-family:monospace;'
+      +'color:#666;background:#f8f8f8;border-radius:3px;user-select:none;">'
+      +srcHd
+      +'</div>'
+      +'<div class="mup-nc-bd" style="padding:4px 8px 4px 1px;'+bodyDisplay+'">';
+    map[b.startLine]=openHtml;
+
+    // 閉じ: .mup-nc-bd を閉じ、.mup-nc-ft に閉じ膜ソース行
+    if(b.endLine>=0){
+      var srcFt=escH(b.srcCloseLine||'');
+      map[b.endLine]='</div>'  // close mup-nc-bd
+        +'<div class="mup-nc-ft"'
+        +' style="padding:2px 8px;font-size:0.8em;font-family:monospace;color:'+col+';opacity:0.7">'
+        +srcFt
+        +'</div>'
+        +'</div>';  // close mup-nc
+    }
+  });
+  return map;
 }
 // \▲[CN=RENDERER.NEW_NOTATION]
 
@@ -342,7 +390,7 @@ module.exports = {
         // 膜行・栞行のparagraph_open+inline+paragraph_closeトークンをhtml_blockに直接差し替え
         // markdownIt.render()の二重呼び出しを排除し、キー入力遅延を根本解消
         // v5.0: state.tokens直接操作（二重レンダリング排除） / v4.1: キャッシュ追加
-        var _mupCache = { key: '', blocks: [], htmlMap: {} };
+        var _mupCache = { key: '', blocks: [], htmlMap: {}, ncBlocks: [], ncHtmlMap: {} };
         markdownIt.core.ruler.push('markMup',function(state){
           var src=state.src;
 
@@ -352,16 +400,17 @@ module.exports = {
           var hasNewNotation = /\{[▼▶▲◀][mM](?:CN|H[1-3])=/.test(src);
           if(!hasLegacy && !hasNewNotation) return false;
 
-          // v7.0: 新記法(コメント型) → 内部で旧記法に変換。以降の全処理は既存ロジックを再利用。
-          if(hasNewNotation) src = convertNewNotation(src);
+          // v7.1: 新記法は convertNewNotation では変換しない。
+          // parseNewNotationBlocks + buildMupNcMap で .mup-nc styled-div として独立処理。
+          // 旧記法(src)と新記法(rawLines)を分けて処理し、htmlMapを合成する。
 
           // \▼[CN=RENDERER.JOPLIN.MARKMUP.PREP] // 前処理・パース（キャッシュ付き）
           var rawLines=src.split('\n');
-          // 膜タグ行 + 本文状態(T/B/M)をキャッシュキーに含める
+          // 膜タグ行(旧記法+新記法) + 本文状態(T/B/M)をキャッシュキーに含める
           // → 空膜に中身を書いた瞬間に🛒→カウンター表示が正しく切り替わる
           var mupMembraneParts=[], mupBodyParts=[];
           rawLines.forEach(function(l,i){
-            if(RE_O.test(l)||RE_C.test(l)){
+            if(RE_O.test(l)||RE_C.test(l)||RE_O_NEW.test(l)||RE_C_NEW.test(l)){
               mupMembraneParts.push(i+':'+l);
             } else {
               var t=l.trim();
@@ -374,30 +423,42 @@ module.exports = {
           });
           var mupKey=mupMembraneParts.join('\n')+'\n---\n'+mupBodyParts.join('\n');
 
-          var blocks, htmlMap;
-          if(mupKey===_mupCache.key && _mupCache.blocks.length>0){
+          var blocks, htmlMap, ncBlocks, ncHtmlMap;
+          if(mupKey===_mupCache.key && mupKey.length>0){
             // キャッシュ利用
             blocks=_mupCache.blocks;
             htmlMap=_mupCache.htmlMap;
+            ncBlocks=_mupCache.ncBlocks;
+            ncHtmlMap=_mupCache.ncHtmlMap;
           } else {
-            // キャッシュ更新
+            // 旧記法パス: fixDisplaySrc → parseMembranes → buildMupHtmlMap
             var srcFixed=fixDisplaySrc(src);
             var lines=srcFixed.split('\n');
             blocks=parseMembranes(lines);
             analyzeBodyState(blocks,lines); // 全7状態の検出
             htmlMap=buildMupHtmlMap(blocks,lines);
+            // 新記法パス: parseNewNotationBlocks → buildMupNcMap
+            ncBlocks=parseNewNotationBlocks(rawLines);
+            ncHtmlMap=buildMupNcMap(ncBlocks,rawLines);
+            // キャッシュ更新
             _mupCache.key=mupKey;
             _mupCache.blocks=blocks;
             _mupCache.htmlMap=htmlMap;
+            _mupCache.ncBlocks=ncBlocks;
+            _mupCache.ncHtmlMap=ncHtmlMap;
           }
           // \▲[CN=RENDERER.JOPLIN.MARKMUP.PREP]
 
           // \▼[CN=RENDERER.JOPLIN.MARKMUP.TOKENS] // state.tokens直接操作（v5.0 二重レンダリング排除）
-          // 行番号 → 膜HTML マップを構築
+          // 行番号 → 膜HTML マップを構築（旧記法 + 新記法を合成）
           var mupLineHtml={};
           blocks.forEach(function(b){
             if(htmlMap[b.startLine]!==undefined) mupLineHtml[b.startLine]=htmlMap[b.startLine];
             if(b.endLine>=0&&htmlMap[b.endLine]!==undefined) mupLineHtml[b.endLine]=htmlMap[b.endLine];
+          });
+          ncBlocks.forEach(function(b){
+            if(ncHtmlMap[b.startLine]!==undefined) mupLineHtml[b.startLine]=ncHtmlMap[b.startLine];
+            if(b.endLine>=0&&ncHtmlMap[b.endLine]!==undefined) mupLineHtml[b.endLine]=ncHtmlMap[b.endLine];
           });
 
           // state.tokensを逆順スキャン: 膜行・栞行の paragraph_open+inline+paragraph_close を

@@ -1,5 +1,7 @@
-// \▼[CN=FOLD] // Fold Membrane - click handler v7.15
+// \▼[CN=FOLD] // Fold Membrane - click handler v7.16
 // ─── changelog ───────────────────────────────────────
+// v7.16 2026.04.24(金)pm07:20 新記法(.mup-nc) .mup-nc-hd クリックで .mup-nc-bd 開閉トグル。
+//                      FOLD.CLICK.NC セクション追加。renderer v7.1 の styled-div 出力に対応。
 // v7.15 2026.04.19(日)pm11:55 m/M 膜形式切替ボタンを Type行 左端に追加。
 //                      ホバーで説明ポップアップ(m: normal / M: inviolable (not yet implemented))。
 //                      クリックで m⇄M トグル→mupSetMType送信(index.ts CN=2947)。
@@ -304,6 +306,21 @@ document.addEventListener('click', function(e) {
     }
   }
   // \▲[CN=FOLD.CLICK.GREEN_BTN]
+
+  // \▼[CN=FOLD.CLICK.NC] // 新記法(.mup-nc) .mup-nc-hd クリック → .mup-nc-bd 開閉
+  var ncHdEl = e.target.closest('.mup-nc-hd');
+  if (ncHdEl) {
+    var ncEl = ncHdEl.closest('.mup-nc');
+    if (ncEl) {
+      var ncBdEl = ncEl.querySelector('.mup-nc-bd');
+      if (ncBdEl) {
+        var nowOpen = ncBdEl.style.display !== 'none';
+        ncBdEl.style.display = nowOpen ? 'none' : '';
+      }
+    }
+    return;
+  }
+  // \▲[CN=FOLD.CLICK.NC]
 
   // \▼[CN=FOLD.CLICK.TARGET] // クリック対象の特定（▼▶▲アイコンのみ）
   var ico0 = e.target.closest('.mup-ico');
