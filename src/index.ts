@@ -1,8 +1,8 @@
 /**
  * \▼[CN=5831_FILE_HEADER] // ファイルヘッダー
  * @file    index.ts
- * @version 8.94
- * @date    2026.04.24(金)pm02:05
+ * @version 8.95
+ * @date    2026.04.24(金)pm07:35
  * @author  俊克 + Claude (Anthropic)
  * @desc
  *   v1.0 2026.03.18 am10:12 末尾追記
@@ -228,6 +228,7 @@
  *   v8.92 [2026.04.24(金)am08:40] CN=4927_FUSED_PREFIX 新設。TinyMCEが「前段落の末尾」と「次の膜タグ行」を同一行に融合させる破損パターンに対応。例として span[color]="ここ" + span[color]="▼" + plain " new_2112 ASTER SLASH-SLASH comment [⊕0+0]" の順に繋がる形。矢印を含まないtext spans + 矢印spanの融合を検出し、前段落部分を前行へ切り出す。INLINE_ARROW 直前で実行。併せて INLINE_ARROW の regex を緩和し、閉じアスタリスクが欠落した "ASTER SLASH-SLASH comment" も捕捉。膜を増やすほど壊れやすい症状(v0.9.152_0831 ユーザ報告、4つ目・5つ目を縦膜で追加→Cmd+Sで4つ壊滅)の根本対策。
  *   v8.93 [2026.04.24(金)pm01:48] markdownItRenderer v7.0 と連動。コメント型新記法 v0.6 の読み取りサポートを renderer 側で追加（Stage 1）。index.ts 側は今回無改修—新記法 "ASTER ASTER brace ▼mCN=name🟢 ASTER ASTER comment paren ⊕0+0 paren close brace" はパース時に内部で旧記法 ▼m[CN=name]$ に変換されて既存ロジックに流れる。不可侵膜M(大文字)も形式だけ先行実装(▼MCN→M▼[CN=...])。書込み側(insertTemplate/SetName/SetMtype)は従来の旧記法を出力—Stage 2 で切替予定。
  *   v8.94 [2026.04.24(金)pm02:05] INLINE_ARROW の regex をエスケープ済みアスタリスク (BACKSLASH-ASTER) 対応に拡張。イタリック片割れの ASTER が Markdown 保存時に BACKSLASH-ASTER になる破損パターン (v0.9.153_0152 ユーザ報告、単独膜の名前変更後に m[CN=...]$ 構造が完全消失し、残った BACKSLASH-ASTER-SLASH-SLASH comment で INLINE_ARROW が失敗していた)を救済。開き・閉じ両方のイタリック位置に BACKSLASH-QUESTION を追加。
+ *   v8.95 [2026.04.24(金)pm07:35] CN=7492 _mupMakeMembrane をコメント型新記法に変更。// {▼mPFX=name🟢 // comment (⊕0+0)} 形式で挿入。WYSIWYG はコードブロックラップ不要になり、<p> タグで直接挿入に刷新。Markdown/WYSIWYG 共に同一テンプレートを使用。
  * \▲[CN=5831_FILE_HEADER]
  */
 
@@ -2019,29 +2020,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
       const d = new Date();
       return String(d.getMinutes()).padStart(2,'0') + String(d.getSeconds()).padStart(2,'0');
     }
-    function _mupMakeMembrane(kind: 'V' | 'H', content: string, dollar: boolean): string {
-      // dollar=false: v2.1記法（$なし）→Markdownモード用
-      // dollar=true : $記法（$▼m[...]$）→WYSIWYGモード用（TinyMCE耐性向上）
+    function _mupMakeMembrane(kind: 'V' | 'H', content: string): string {
+      // v8.95: コメント型新記法 // {▼mPFX=name🟢 // comment (⊕0+0)}
+      // Markdown/WYSIWYG 共通。TinyMCEはプレーンテキスト行を破壊しないため
+      // コードブロックラップ不要。Turndown往復でソース保全。
       const id = _mupTimeId();
-      const open  = kind === 'V' ? '▼m' : '▶m';
-      const close = kind === 'V' ? '▲m' : '◀m';
+      const openArrow  = kind === 'V' ? '▼' : '▶';
+      const closeArrow = kind === 'V' ? '▲' : '◀';
       const pfx   = kind === 'V' ? 'H1' : 'CN';
       const name  = `new_${id}`;
-      // CN=7492 v8.91: 中身が空だとWYSIWYGでCmd+S→Repair後に膜が消えるので、
-      //   プレースホルダ `🗒️` を入れて「中に入れる」状態を保証する。
+      // 中身が空だとWYSIWYGでCmd+S→Repair後に膜が消えるので 🗒️ を保証
       const body  = (content && content.length > 0) ? content : '🗒️';
-      const $o = dollar ? '$' : '';
-      return `${$o}${open}[${pfx}=${name}]${$o} // comment [⊕0+0]\n\n${body}\n\n${$o}${close}[${pfx}=${name}]${$o}`;
+      return `// {${openArrow}m${pfx}=${name}🟢 // comment (⊕0+0)}\n\n${body}\n\n// {${closeArrow}m${pfx}=${name}🟢}`;
     }
     async function _mupInsertMembraneWrap(kind: 'V' | 'H') {
       const isMarkdown = await isMarkdownMode();
       let selected = '';
       try { selected = (await joplin.commands.execute('selectedText')) as string || ''; } catch(_e) {}
+      const membrane = _mupMakeMembrane(kind, selected);
       if (isMarkdown) {
-        // Markdown: $なしv2.1記法でそのまま挿入。
-        // 膜の前後に空行を2本ずつ入れて、前後の段落・罫線・$$等と合体しないよう
-        // markdown-itに明確なブロック境界を与える（$$連続やHR隣接での膜破損を回避）。
-        const membrane = _mupMakeMembrane(kind, selected, false);
+        // Markdown: コメント型新記法をそのまま挿入。
+        // 膜の前後に空行2本でブロック境界を明示（前後段落・罫線・$$との合体防止）。
         const wrapped = '\n\n' + membrane + '\n\n';
         try {
           await joplin.commands.execute('replaceSelection', wrapped);
@@ -2053,39 +2052,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
           } catch(_e2) {}
         }
       } else {
-        // WYSIWYG: Joplin内部形式のコードブロックで挿入。
-        // 手動で「コードブロック」ツールボタン→$記法入力→OKで戻った時と同じHTML構造。
-        // 実装調査(app.asar): <div class="joplin-editable"> に2つの<pre>を内包。
-        //   ① <pre class="joplin-source" data-joplin-source-open/close>…</pre> (Markdown保存用)
-        //   ② <pre class="hljs"><code>…</code></pre> (可視表示用)
-        // Markdown切替時 data-joplin-source-open="```&#10;" / close="&#10;```" により
-        // ```\n$▼m[...]$ \n``` に復元 → repairMupSpan CN=3094_CODEFENCE_UNWRAP が膜を解放。
-        const membrane = _mupMakeMembrane(kind, selected, true);
-        const esc = membrane
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;');
-        // 前後に空段落を置いて、直前のブロック(罫線・$$数式等)と合体しないブロック境界を作る。
+        // WYSIWYG: コメント型新記法はプレーンテキストなのでコードブロック不要。
+        // <p>行として挿入 → Turndown が // {▼m...} を保持したまま保存。
+        // renderer v7.1 が次のsyncで .mup-nc styled-div として描画する。
+        const toHtmlP = (line: string) => {
+          if (!line) return '<p><br></p>';
+          const esc = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          return `<p>${esc}</p>`;
+        };
         const html =
           '<p><br></p>' +
-          '<div class="joplin-editable">' +
-            '<pre class="joplin-source"' +
-            ' data-joplin-language=""' +
-            ' data-joplin-source-open="\`\`\`&#10;"' +
-            ' data-joplin-source-close="&#10;\`\`\`">' +
-            esc +
-            '</pre>' +
-            '<pre class="hljs"><code>' + esc + '</code></pre>' +
-          '</div>' +
+          membrane.split('\n').map(toHtmlP).join('') +
           '<p><br></p>';
         try {
           await joplin.commands.execute('editor.execCommand', {
             name: 'mceInsertContent', value: html,
           });
         } catch(_e) {
-          // fallback: プレーン``` で挿入
+          // fallback: replaceSelection
           try {
-            await joplin.commands.execute('replaceSelection', '\n```\n' + membrane + '\n```\n');
+            await joplin.commands.execute('replaceSelection', '\n\n' + membrane + '\n\n');
           } catch(_e2) {}
         }
       }
