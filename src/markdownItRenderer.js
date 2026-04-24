@@ -1,8 +1,13 @@
 // \▼[CN=RENDERER] // Fold Membrane - markdown-it renderer
 /**
  * @file    markdownItRenderer.js
- * @version 6.9
- * @date    2026.04.19(日)pm11:55
+ * @version 7.0
+ * @date    2026.04.24(金)am10:16
+ * @desc    v7.0 [2026.04.24(金)am10:16]: コメント型新記法 v0.6 読み取りサポート。
+ *                // {▼mCN=name🟢 // comment (⊕0+0)} 形式をパース直前に内部で旧記法に
+ *                変換（convertNewNotation）し、以降の既存ロジックで処理する。
+ *                新記法はプレーンテキスト行のみで構成されるためTinyMCE往復で破壊されず、
+ *                修復チェーン不要。Stage 1: 読み取りのみ（書き込み側は従来通り旧記法）。
  * @desc    v6.9 [2026.04.19(日)pm11:55]: 膜形式(mtype)検出＋DOM公開。
  *                RE_O capture(1)がm-suffix, (3)がM-prefix, (2)が_M legacy。
  *                b.mtype として保持し <div class="mup" data-mup-mtype="m|M|_M"> に出力。
@@ -69,6 +74,53 @@ var RE_LINK_ME    = /Me⇒|⇒Me/;  // Me結合記法: {A}⇒Me⇒{B} / Me⇒{B}
 // \▼[CN=RENDERER.UTIL] // ユーティリティ
 function escH(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 // \▲[CN=RENDERER.UTIL]
+
+// \▼[CN=RENDERER.NEW_NOTATION] // コメント型新記法 v0.6 読み取りサポート (v7.0)
+// ──────────────────────────────────────────────────────────────
+// 通常膜:     // {▼mCN=name🟢 // comment (⊕0+0)}    // m=小文字 (mutable)
+// 不可侵膜M:  // {▼MCN=name🟢 // comment (⊕0+0)}    // M=大文字 (inviolable, 形式のみ)
+// 閉じ膜:     // {▲mCN=name🟢 // comment2}         // {▲MCN=name🟢}
+// ──────────────────────────────────────────────────────────────
+// 方針: パース直前に内部で旧記法に変換し、以降の既存ロジックを無改修で再利用する。
+//   通常:    ▼mCN=name🟢 // c (⊕0+0) → ▼m[CN=name]🟢 // c [⊕0+0]      (mtype='m')
+//   不可侵:  ▼MCN=name🟢 // c (⊕0+0) → M▼[CN=name]🟢 // c [⊕0+0]      (mtype='M')
+// ユーザが編集するソース文字列は一切書き換えない（表示専用前処理）。
+// 新記法はプレーンテキスト行なのでTinyMCE往復で破壊されず、修復チェーン不要。
+// M(不可侵)の実挙動（編集抑止など）は未実装—形式だけ先行確保。
+var RE_O_NEW = /^[ \t]*\/\/\s*\{([▼▶])([mM])(CN|H[1-3])=([^🟢{}\s]+)(🟢)?(?:\s*\/\/\s*([^{}]*?))?\s*\}\s*$/;
+var RE_C_NEW = /^[ \t]*\/\/\s*\{([▲◀])([mM])(CN|H[1-3])=([^🟢{}\s]+)(🟢)?(?:\s*\/\/\s*([^{}]*?))?\s*\}\s*$/;
+
+function convertNewNotation(src){
+  // 早期リターン: 新記法の兆候がなければ何もしない（高速パス）
+  if(src.indexOf('{▼')<0 && src.indexOf('{▶')<0 && src.indexOf('{▲')<0 && src.indexOf('{◀')<0) return src;
+  var lines = src.split('\n');
+  var changed = false;
+  for(var i=0; i<lines.length; i++){
+    var mo = RE_O_NEW.exec(lines[i]);
+    if(mo){
+      // mo[1]=arrow, mo[2]=m|M, mo[3]=CN|H[1-3], mo[4]=name, mo[5]=🟢?, mo[6]=inner
+      var arrow=mo[1], type=mo[2], pfx=mo[3], cn=mo[4], active=mo[5]||'';
+      var inner = (mo[6] || '').replace(/\(([⊕⊖⊘][^)]*)\)/g, '[$1]').trim();
+      var tag = (type==='M') ? ('M'+arrow+'['+pfx+'='+cn+']')
+                             : (arrow+'m['+pfx+'='+cn+']');
+      lines[i] = tag + active + (inner ? ' // ' + inner : '');
+      changed = true;
+      continue;
+    }
+    var mc = RE_C_NEW.exec(lines[i]);
+    if(mc){
+      var arrow2=mc[1], type2=mc[2], pfx2=mc[3], cn2=mc[4], active2=mc[5]||'';
+      var inner2 = (mc[6] || '').replace(/\(([⊕⊖⊘][^)]*)\)/g, '[$1]').trim();
+      var tag2 = (type2==='M') ? ('M'+arrow2+'['+pfx2+'='+cn2+']')
+                               : (arrow2+'m['+pfx2+'='+cn2+']');
+      lines[i] = tag2 + active2 + (inner2 ? ' // ' + inner2 : '');
+      changed = true;
+      continue;
+    }
+  }
+  return changed ? lines.join('\n') : src;
+}
+// \▲[CN=RENDERER.NEW_NOTATION]
 
 // \▼[CN=RENDERER.FIXDISPLAY] // span破損を一時修復（データ書換なし・表示専用前処理）
 // WYSIWYGがspan形式に破壊した膜・栞を描画前に一時修復する
@@ -294,9 +346,14 @@ module.exports = {
         markdownIt.core.ruler.push('markMup',function(state){
           var src=state.src;
 
-          // 膜ノート検出: ▼m[ / ▶m[ の2文字（正式）または旧記法
-          if(src.indexOf('▼m[')<0 && src.indexOf('▶m[')<0 &&
-             !/[▼▶▲◀]_[Mm🄼]\[|[Mm🄼][▼▶▲◀]\[/.test(src)) return false;
+          // 膜ノート検出: 旧記法 ▼m[/▶m[/_M/M-prefix、または 新記法 // {[▼▶][mM](CN|H[1-3])=
+          var hasLegacy = (src.indexOf('▼m[')>=0 || src.indexOf('▶m[')>=0 ||
+                           /[▼▶▲◀]_[Mm🄼]\[|[Mm🄼][▼▶▲◀]\[/.test(src));
+          var hasNewNotation = /\{[▼▶▲◀][mM](?:CN|H[1-3])=/.test(src);
+          if(!hasLegacy && !hasNewNotation) return false;
+
+          // v7.0: 新記法(コメント型) → 内部で旧記法に変換。以降の全処理は既存ロジックを再利用。
+          if(hasNewNotation) src = convertNewNotation(src);
 
           // \▼[CN=RENDERER.JOPLIN.MARKMUP.PREP] // 前処理・パース（キャッシュ付き）
           var rawLines=src.split('\n');
